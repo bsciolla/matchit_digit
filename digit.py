@@ -9,6 +9,7 @@ import pygame
 import copy
 import sys
 import numpy
+import math
 from pygame.locals import *
 from pygame.compat import geterror
 import match_func
@@ -118,6 +119,15 @@ class SpriteMan(pygame.sprite.Sprite):
             self.image, ((int)(0.7*(DELTAX+1)), (int)(0.7*(DELTAY+1))))
         self.rect = self.image.get_rect()
 
+class SpriteCompanion(pygame.sprite.Sprite):
+    def __init__(self, name):
+        pygame.sprite.Sprite.__init__(self)
+        self.image, self.rect = load_image(name, -1)
+        center = self.rect.center
+        self.image = pygame.transform.scale(
+            self.image, ((int)(0.5*(DELTAX+1)), (int)(0.5*(DELTAY+1))))
+        self.rect = self.image.get_rect()
+
 
 class SpriteTile(pygame.sprite.Sprite):
     def __init__(self, img, rect):
@@ -183,8 +193,22 @@ class Hero():
         for i in range(4):
             self.speedseq.append(Speedseq())
         self.sprite = SpriteMan()
+        
+        self.companion1 = SpriteCompanion("undine.png")
+        self.companion2 = SpriteCompanion("lumina.png")
+        
         # self.updateposition(board)
 
+
+    def updatecompanions(self, board):
+        angular_speed = 3.14/1000.
+        self.companion1.rect.center = \
+            (self.x + board.SCROLLX + MATCH_VIEWX*DELTAX*math.cos(get_ticks()*angular_speed),
+             self.y + board.SCROLLY + MATCH_VIEWY*DELTAY*math.sin(get_ticks()*angular_speed))
+        self.companion2.rect.center = \
+            (self.x + board.SCROLLX + MATCH_VIEWX*DELTAX*math.cos(get_ticks()*angular_speed + math.pi),
+             self.y + board.SCROLLY + MATCH_VIEWY*DELTAY*math.sin(get_ticks()*angular_speed + math.pi))  
+    
     def updateposition(self, board):
 
         # scrolling
@@ -204,12 +228,12 @@ class Hero():
         if self.y + board.SCROLLY > SCROLLING_MAXY:
             board.scrolling(0, -(self.y + board.SCROLLY - SCROLLING_MAXY))
 
-        self.sprite.rect.center = \
-            (self.x + board.SCROLLX, self.y + board.SCROLLY)
+        self.updateposition_nockeck(board)
 
     def updateposition_nockeck(self, board):
         self.sprite.rect.center = \
             (self.x + board.SCROLLX, self.y + board.SCROLLY)
+        self.updatecompanions(board)
 
     def get_speed(self, dx, dy):
         return(self.speedseq[2].speed -
@@ -409,8 +433,11 @@ class Board():
         self.hero = Hero(self)
         self.sound = Sound()
         self.spritegroup = pygame.sprite.Group()
+        
         self.spritegroup.add(self.hero.sprite)
-
+        self.spritegroup.add(self.hero.companion1)
+        self.spritegroup.add(self.hero.companion2)
+        
         self.build_blocks_sprites()
         self.place_tiles()
         self.hero.updateposition(self)
