@@ -220,26 +220,34 @@ class Hero():
 class Scoring():
     def __init__(self):
         self.health = 100
-        self.dig_timer = get_ticks()
+        
+        self.combo_timer = get_ticks()
         self.in_a_row = 0
     
     def empty_hit(self):
+    
+        # reset combo timer
+        self.combo_timer = get_ticks()
+        self.in_a_row = 0
+        
+        # reset combo timer
         if numpy.random.rand() <= PROBA_HIT:
             self.health = self.health - 10 - numpy.random.randint(10)
             return True
         return False
-        
+    
+    
     def register_dig(self):
         next_timer = get_ticks()
-        if self.dig_timer - next_timer < SCORING_ROW:
+        if self.combo_timer - next_timer < SCORING_ROW:
             self.in_a_row += 1
         else:
             self.in_a_row = 0
-        self.dig_timer = next_timer
+        self.combo_timer = next_timer
         if self.in_a_row >= 3:
             return True
         return False
-                    
+
         
 
 class Move():
@@ -313,6 +321,10 @@ class Sound():
         self.hurtsounds = []
         self.hurtsounds.append(load_sound("PINBALL.WAV"))
         self.hurtsounds.append(load_sound("punch.wav"))
+        self.combosounds = []
+        self.combosounds.append(load_sound("WOOO.WAV"))
+        self.combosounds.append(load_sound("TNT Barrel.wav"))
+        
     
     def play_digsound(self):
         self.digsounds[numpy.random.randint(0,4)].play()
@@ -325,6 +337,9 @@ class Sound():
         
     def play_hurtsound(self):
         self.hurtsounds[numpy.random.randint(0,2)].play()
+    
+    def play_combosound(self):
+        self.combosounds[numpy.random.randint(0,2)].play()
         
 
 class Board():
@@ -361,7 +376,7 @@ class Board():
                     self.spritelist[-1].add(self.spritegroup)
         self.tilesid = self.tilesid.astype(int)
         self.place_tiles()
-              
+        
               
               
     def scrolling(self, dx, dy):   
@@ -396,13 +411,7 @@ class Board():
         
         dist_x = (self.hero.x - (CX + i*DELTAX))
         dist_y = (self.hero.y - (CY + j*DELTAY))
-        speed_x, speed_y = self.hero.get_speed(dx, dy)
-        
-        print(self.hero.x, self.hero.y, i, j)
-        print(dist_x/DELTAX, dist_y/DELTAY)
-        print((dist_x + HITBOXX + speed_x)/DELTAX)
-        print((dist_y + HITBOXY + speed_y)/DELTAY)
-        
+        speed_x, speed_y = self.hero.get_speed(dx, dy)      
         
         collision = False
 
@@ -455,10 +464,13 @@ class Board():
                 #self.hero.x = self.hero.x + dx
                 #self.hero.y = self.hero.y + dy
                 self.hero.moving_digging(dx, dy)
-                self.sound.play_digsound()
-                self.sound.play_hitsound()
-                #self.sound.play_stepsound()
                 self.hero.updateposition(self)
+                if self.scoring.register_dig():
+                    print("combo")
+                    self.sound.play_combosound()
+                else:
+                    self.sound.play_digsound()
+                    self.sound.play_hitsound()
             else:
                 self.hero.stopping(dx, dy)
                 if self.scoring.empty_hit():
