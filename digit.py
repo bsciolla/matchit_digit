@@ -53,6 +53,8 @@ XSTART = 15
 YSTART = 15
 SCROLLING_DEATHX = 100 
 
+MATCH_VIEWX = 10
+MATCH_VIEWY = 10
 
 HSCREEN = 800
 VSCREEN = 600
@@ -269,10 +271,13 @@ class Hero():
         
 class Scoring():
     def __init__(self):
+        
         self.health = 100
         
         self.combo_timer = get_ticks()
         self.in_a_row = 0
+        self.deathscroll = 0.1
+        self.deathtimer = get_ticks()
     
     def empty_hit(self):
     
@@ -298,7 +303,11 @@ class Scoring():
             return True
         return False
 
-        
+    def increase_deathscroll(self):
+        if get_ticks() - self.deathtimer > 1000:
+            self.deathscroll += 0.01
+            self.deathtimer = get_ticks()
+            
 
 class Move():
     #UP, DOWN, RIGHT, LEFT: 273, 274, 275, 276
@@ -616,15 +625,25 @@ class Board():
         
     
     def find_match_to_one_tile(self, i, j):
+        #reduced view
+        imin = i - MATCH_VIEWX if i - MATCH_VIEWX >= 0 else 0
+        imax = i + MATCH_VIEWX if i + MATCH_VIEWX < HBLOCK-1 else HBLOCK - 1
+        jmin = j - MATCH_VIEWY if j - MATCH_VIEWY >= 0 else 0
+        jmax = j + MATCH_VIEWY if j + MATCH_VIEWY < VBLOCK-1 else HBLOCK - 1
+        # position of the tile of interest in the view
+        i, j = i-imin, j-jmin
         
-        idx_list = numpy.argwhere(self.tiles == self.tiles[j,i])
+        local_tiles = self.tiles[jmin:jmax, imin:imax]
+        
+       
+        idx_list = numpy.argwhere(local_tiles == local_tiles[j,i])
         
         list_match = []
         
         for idx in range(idx_list.shape[0]):
             k = idx_list[idx, 1]
             l = idx_list[idx, 0]
-            connect = find_connection(i, j, k, l, self.tiles)
+            connect = find_connection(i, j, k, l, local_tiles)
             if connect == True and (i != k or j != l):
                 list_match.append([k, l])
         
@@ -639,8 +658,8 @@ class Board():
         k = list_match[rank][0]
         l = list_match[rank][1]
         
-        self.group_dig(i,j)
-        self.group_dig(k,l)
+        self.group_dig(i+imin, j+jmin)
+        self.group_dig(k+imin, l+jmin)
         return True
         
     def group_dig(self,i,j):
@@ -702,15 +721,18 @@ def testing():
     
 
     
-def find_connection(i,j,it,jt,tiles):
+def find_connection(i, j, it, jt, tiles):
     #print("searching :", i,j , "  to ", it, jt)
     # Always flip array such that it >= i and jt >= j (LAZY)
+    hblock = tiles.shape[1]
+    vblock = tiles.shape[0]
+    
     if i > it:
         tiles = numpy.flip(tiles, axis=1)
-        i,it = HBLOCK-1-i, HBLOCK-1-it
+        i,it = hblock-1-i, hblock-1-it
     if j > jt:
         tiles = numpy.flip(tiles, axis=0)
-        j,jt = VBLOCK-1-j, VBLOCK-1-jt
+        j,jt = vblock-1-j, vblock-1-jt
     
     
     found = False
@@ -755,7 +777,7 @@ def find_connection(i,j,it,jt,tiles):
                # print("cw right", il,j,it,jt)
                 break
         il = il + 1
-        if il>HBLOCK-1:
+        if il>hblock-1:
             break
     #if found == True:
      #   print('right')
@@ -783,7 +805,7 @@ def find_connection(i,j,it,jt,tiles):
                 found = True
                 break
         jl = jl + 1
-        if jl>VBLOCK-1:
+        if jl>vblock-1:
             break
 
         
@@ -939,7 +961,8 @@ def main():
         board.scrolling(0,0)
         
         if DEATHMODE == 1:
-            board.scrolling(-0.1,0)
+            board.scoring.increase_deathscroll()
+            board.scrolling(-board.scoring.deathscroll,0)
             board.circular_warping()
         
         allsprites.update()
