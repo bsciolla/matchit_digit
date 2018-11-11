@@ -98,26 +98,8 @@ NKEYS = 16
 
 tilenames = ['blocks/ore'+str(i)+'.png' for i in range(1,9)] + ['blocks/rock'+str(i)+'.png' for i in range(1,9)]
 
-textkeys = ['a','b','c','d','e','f','g','h','i','j','k','l'\
-,'m','n','o','p','q','r','s','t','u','v','w','x','y','z']
-colorkeys = []
-for i in range(NKEYS):
-    x = i/NKEYS
-    colorkeys.append( (255*x, 255*(1-x), 255*(1-x/2)**2.0) )
-   
 def get_ticks():
     return(pygame.time.get_ticks())
-
-
-def find_corresponding_key(keyboardkey):
-    return( numpy.argmax(possiblekeys == keyboardkey) )
-
-possiblekeys = [K_a,K_b,K_c,K_d,K_e,K_f,\
-K_g,K_h,K_i,K_j,K_k,K_l,K_m,K_n,K_o,K_p,\
-K_q,K_r,K_s,K_t,K_u,K_v,K_w,K_y,K_z]
-
-possiblekeys = numpy.array(possiblekeys)
-
 
 if not pygame.font: print ('Warning, fonts disabled')
 if not pygame.mixer: print ('Warning, sound disabled')
@@ -145,10 +127,6 @@ class SpriteTile(pygame.sprite.Sprite):
     def dig(self, group):
         self.remove(group)
 
-#class Images():
-#    def __init__(self):
-#        self.images = []
-#        self.images.append(SpriteTile("blocks/rock1.png"))
 
 def coord_to_tiles(x, y):
     cx = HSCREEN/2.0 - (HBLOCK/2.0) * DELTAX
@@ -432,7 +410,6 @@ class Board():
         
         self.scoring = Scoring()
         
-        #self.tiles = possiblekeys[tiles]
         self.hour = get_ticks()
         self.hero = Hero(self)
         self.sound = Sound()
@@ -593,46 +570,7 @@ class Board():
                     currentid = self.tilesid[j,i]
                     self.spritelist[currentid].rect.center = \
                         (cx + dx + self.SCROLLX, cy + dy + self.SCROLLY)
-            
-    
-    def render_text(self, dx, dy, textascii, color, screen, font):
-        cx = HSCREEN/2.0 - HBLOCK/2.0 * DELTAX
-        cy = VSCREEN/2.0 - VBLOCK/2.0 * DELTAY
-        text = font.render(textascii, True, color)
-        textpos = text.get_rect(centerx=cx+dx, \
-                         centery=cy+dy)
-        screen.blit(text, textpos)
-    
-    def draw_text(self, screen, font):
 
-        for j in range(VBLOCK):
-            for i in range(HBLOCK):
-                dx = i*DELTAX
-                dy = j*DELTAY
-                if j == self.hero.y and i == self.hero.x:
-                        textascii = "0"
-                        color = (255,255,0)
-                        self.render_text(dx, dy, textascii, color, screen, font)
-                
-                if self.tiles[j,i] != -1:
-                    textascii = textkeys[self.tiles[j,i]]
-                    if self.anim[j,i] == -1:
-                        color = colorkeys[self.tiles[j,i]]
-                    else:
-                        k = self.anim[j,i]*255/10.0
-                        color = (k,k*0.1,k*0.1)
-                        
-                    #self.render_text(dx, dy, textascii, color, screen, font)
-                    
-        # do every FADE_WAIT
-        if get_ticks() - self.hour > FADE_WAIT:
-            self.hour =  get_ticks()
-            #cooldown and sets map to zero when reaching -1
-            self.anim[self.anim>=0] = self.anim[self.anim>=0] - 1
-            self.tiles[self.anim == 0] = -1
-
-        
-    
     def find_match_to_one_tile(self, i, j, io, jo):
         #reduced view
         imin = io - MATCH_VIEWX if io - MATCH_VIEWX >= 0 else 0
@@ -642,8 +580,6 @@ class Board():
         # position of the tile of interest in the view
         i, j = i - imin, j - jmin
         io, jo = io - imin, jo - jmin
-        
-        
         
         local_tiles = copy.deepcopy(self.tiles[jmin:jmax, imin:imax])
         # Just use a memorized patch if the view is full. Else, search in the square. Can be fixed later or never.
@@ -682,32 +618,6 @@ class Board():
         self.spritelist[index].dig(self.spritegroup)
         self.tiles[j,i] = -1
 
-
-    
-    
-    def find_match(self, keyboardkey):
-        
-        key = find_corresponding_key(keyboardkey)
-        
-        idx_list = numpy.argwhere(self.tiles == key)
-        
-        for idx1 in range(idx_list.shape[0]):
-            i = idx_list[idx1,1]
-            j = idx_list[idx1,0]
-
-            for idx2 in range(idx1 + 1, idx_list.shape[0]):
-            
-                connect = find_connection(i,j,\
-                    idx_list[idx2,1],idx_list[idx2,0],self.tiles)
-                if connect == True:
-                    #print(i,j,idx_list[idx2,1],idx_list[idx2,0])
-                    self.anim[j,i] = 10
-                    self.anim[idx_list[idx2,0],idx_list[idx2,1]] = 10
-
-
-
-
-
 def testing():
     tiles = numpy.random.randint(0,NKEYS,size=(6,6))
     tiles[1,:] = -1
@@ -732,8 +642,7 @@ def testing():
     assert(is_free_cw_angle_from_to(1,1,1,4,tiles))
     assert(is_free_ccw_angle_from_to(1,1,1,4,tiles))
     assert(is_free_ccw_angle_from_to(1,4,1,1,tiles))
-    
-    
+
 
     
 def find_connection(i, j, it, jt, tiles):
@@ -881,9 +790,6 @@ def is_free_vertical(j,jt,i,tiles):
     if jt<j:
         return True
     return(numpy.all(tiles[j:jt+1,i]==-1) )
-    
-
-
 
 
 
@@ -902,7 +808,7 @@ def main():
     background = background.convert()
     background.fill((50, 20, 10))
 
-    blocks_loaded = [load_image(i) for i in tilenames]
+   
     
 
 #Create font
@@ -915,25 +821,8 @@ def main():
 
 #Prepare Game Objects
     clock = pygame.time.Clock()
-    #whiff_sound = load_sound('whiff.wav')
-    punch_sound = load_sound('ALRIGHT4.WAV')
 
-    list_sound_string = [\
-'ALRIGHT4.WAV',  'GETYOU.WAV',   'OOF2.WAV'   ,   'REPAIR2.WAV' , 'ZAP.WAV',
-'FMUTHA.WAV',    'GIGGLE.WAV' ,  'OUTOTIM2.WAV' , 'RXPLODE.WAV',
-'FOARGH.WAV' ,   'GIRLS01.WAV',  'PARTBUY.WAV' ,  'SMCRASH2.WAV',
-'FYEAH2.WAV'  ,  'OOF1.WAV'  ,   'PINBALL.WAV' ,  'WOOO.WAV']
-
-    all_sound = []
-    for soundname in list_sound_string:
-        all_sound.append(load_sound(soundname))
-        
-    
-        
-
-
-    allsprites = pygame.sprite.RenderPlain(())
-
+    blocks_loaded = [load_image(i) for i in tilenames]
     board = Board(blocks_loaded)
     move = Move()
     
@@ -962,16 +851,12 @@ def main():
             
             if event.type == QUIT:
                 going = False
+                
             elif event.type == KEYDOWN and event.key == K_ESCAPE:
                 going = False
+                
             elif event.type == KEYDOWN and move.is_a_move(event.key):
                 board.move(event.key)
-            #elif event.type == KEYDOWN:
-            #    print(event.key)
-            #    board.find_match(event.key)
-
-        
-            
         
         board.scrolling(0,0)
         
@@ -985,10 +870,6 @@ def main():
         #Draw Everything
         screen.blit(background, (0, 0))
         board.spritegroup.draw(screen)
-        #board.draw_text(screen, font)
-        
- 
-        allsprites.draw(screen)
         pygame.display.flip()
 
 
