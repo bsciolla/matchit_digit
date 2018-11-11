@@ -13,6 +13,7 @@ follow along in the tutorial.
 
 #Import Modules
 import os, pygame
+import copy
 import sys
 import numpy
 from pygame.locals import *
@@ -55,6 +56,14 @@ SCROLLING_DEATHX = 100
 
 MATCH_VIEWX = 10
 MATCH_VIEWY = 10
+
+# Ellipsoidal patch for matching search
+PATCH = numpy.zeros((MATCH_VIEWY*2,MATCH_VIEWX*2))
+for j in range(PATCH.shape[0]):
+    for i in range(PATCH.shape[1]):
+        if (i-MATCH_VIEWX+0.5)**2.0/MATCH_VIEWX**2.0 + (j-MATCH_VIEWY+0.5)**2/MATCH_VIEWY**2.0 <= 1:
+            PATCH[j,i] = 1
+            
 
 HSCREEN = 800
 VSCREEN = 600
@@ -197,7 +206,7 @@ class Hero():
         if DEATHMODE == 1 and board.playing == True:
             if self.x + board.SCROLLX < SCROLLING_DEATHX:
                 print("DEAD")
-           
+        
         
         if self.x + board.SCROLLX < SCROLLING_MINX:
             board.scrolling(-(self.x + board.SCROLLX - SCROLLING_MINX), 0)
@@ -552,7 +561,7 @@ class Board():
         # Attempt to dig
         if collision == True:
         #if self.tiles[j+dy,i+dx] != -1:
-            if self.find_match_to_one_tile(k, l):
+            if self.find_match_to_one_tile(k, l, i, j):
                 #self.hero.x = self.hero.x + dx
                 #self.hero.y = self.hero.y + dy
                 self.hero.moving_digging(dx, dy)
@@ -624,16 +633,22 @@ class Board():
 
         
     
-    def find_match_to_one_tile(self, i, j):
+    def find_match_to_one_tile(self, i, j, io, jo):
         #reduced view
-        imin = i - MATCH_VIEWX if i - MATCH_VIEWX >= 0 else 0
-        imax = i + MATCH_VIEWX if i + MATCH_VIEWX < HBLOCK-1 else HBLOCK - 1
-        jmin = j - MATCH_VIEWY if j - MATCH_VIEWY >= 0 else 0
-        jmax = j + MATCH_VIEWY if j + MATCH_VIEWY < VBLOCK-1 else HBLOCK - 1
+        imin = io - MATCH_VIEWX if io - MATCH_VIEWX >= 0 else 0
+        imax = io + MATCH_VIEWX if io + MATCH_VIEWX < HBLOCK-1 else HBLOCK - 1
+        jmin = jo - MATCH_VIEWY if jo - MATCH_VIEWY >= 0 else 0
+        jmax = jo + MATCH_VIEWY if jo + MATCH_VIEWY < VBLOCK-1 else HBLOCK - 1
         # position of the tile of interest in the view
-        i, j = i-imin, j-jmin
+        i, j = i - imin, j - jmin
+        io, jo = io - imin, jo - jmin
         
-        local_tiles = self.tiles[jmin:jmax, imin:imax]
+        
+        
+        local_tiles = copy.deepcopy(self.tiles[jmin:jmax, imin:imax])
+        # Just use a memorized patch if the view is full. Else, search in the square. Can be fixed later or never.
+        if jmax-jmin == 2*MATCH_VIEWY and imax-imin == 2*MATCH_VIEWX:
+            local_tiles[PATCH == 0] = -2          
         
        
         idx_list = numpy.argwhere(local_tiles == local_tiles[j,i])
