@@ -3,8 +3,9 @@
 #!/usr/bin/env python
 
 
-#Import Modules
-import os, pygame
+# Import Modules
+import os
+import pygame
 import copy
 import sys
 import numpy
@@ -13,20 +14,21 @@ from pygame.compat import geterror
 import match_func
 
 
-#functions to create our resources
+# functions to create our resources
 def load_image(name, colorkey=None):
     fullname = os.path.join(data_dir, name)
     try:
         image = pygame.image.load(fullname)
     except pygame.error:
-        print ('Cannot load image:', fullname)
+        print('Cannot load image:', fullname)
         raise SystemExit(str(geterror()))
     image = image.convert()
     if colorkey is not None:
         if colorkey is -1:
-            colorkey = image.get_at((0,0))
+            colorkey = image.get_at((0, 0))
         image.set_colorkey(colorkey, RLEACCEL)
     return image, image.get_rect()
+
 
 def load_sound(name):
     class NoneSound:
@@ -37,7 +39,7 @@ def load_sound(name):
     try:
         sound = pygame.mixer.Sound(fullname)
     except pygame.error:
-        print ('Cannot load sound: %s' % fullname)
+        print('Cannot load sound: %s' % fullname)
         raise SystemExit(str(geterror()))
     return sound
 
@@ -45,18 +47,19 @@ def load_sound(name):
 DEATHMODE = 1
 XSTART = 15
 YSTART = 15
-SCROLLING_DEATHX = 100 
+SCROLLING_DEATHX = 100
 
 MATCH_VIEWX = 10
 MATCH_VIEWY = 10
 
 # Ellipsoidal patch for matching search
-PATCH = numpy.zeros((MATCH_VIEWY*2,MATCH_VIEWX*2))
+PATCH = numpy.zeros((MATCH_VIEWY*2, MATCH_VIEWX*2))
 for j in range(PATCH.shape[0]):
     for i in range(PATCH.shape[1]):
-        if (i-MATCH_VIEWX+0.5)**2.0/MATCH_VIEWX**2.0 + (j-MATCH_VIEWY+0.5)**2/MATCH_VIEWY**2.0 <= 1:
-            PATCH[j,i] = 1
-            
+        if (i-MATCH_VIEWX+0.5)**2.0/MATCH_VIEWX**2.0 +\
+                (j-MATCH_VIEWY+0.5)**2/MATCH_VIEWY**2.0 <= 1:
+            PATCH[j, i] = 1
+
 
 HSCREEN = 800
 VSCREEN = 600
@@ -84,128 +87,136 @@ SCORING_ROW = 1000
 HITBOXX = 0.7*(DELTAX+1)*0.5
 HITBOXY = 0.7*(DELTAY+1)*0.5
 
-SPEEDSEQ = numpy.array([0,4,5,6,7,7.5,8,8.5,9])*1.2
+SPEEDSEQ = numpy.array([0, 4, 5, 6, 7, 7.5, 8, 8.5, 9])*1.2
 
 fontsize = 30
 NKEYS = 16
 
-tilenames = ['blocks/ore'+str(i)+'.png' for i in range(1,9)] + ['blocks/rock'+str(i)+'.png' for i in range(1,9)]
+tilenames = ['blocks/ore'+str(i)+'.png' for i in range(1, 9)] + \
+    ['blocks/rock'+str(i)+'.png' for i in range(1, 9)]
+
 
 def get_ticks():
     return(pygame.time.get_ticks())
 
-if not pygame.font: print ('Warning, fonts disabled')
-if not pygame.mixer: print ('Warning, sound disabled')
+
+if not pygame.font:
+    print('Warning, fonts disabled')
+if not pygame.mixer:
+    print('Warning, sound disabled')
 
 main_dir = os.path.split(os.path.abspath(__file__))[0]
 data_dir = os.path.join(main_dir, 'data')
+
 
 class SpriteMan(pygame.sprite.Sprite):
     def __init__(self):
         pygame.sprite.Sprite.__init__(self)
         self.image, self.rect = load_image("dwarf_face.png", -1)
         center = self.rect.center
-        self.image = pygame.transform.scale(self.image, ((int)(0.7*(DELTAX+1)), (int)(0.7*(DELTAY+1))))
+        self.image = pygame.transform.scale(
+            self.image, ((int)(0.7*(DELTAX+1)), (int)(0.7*(DELTAY+1))))
         self.rect = self.image.get_rect()
+
 
 class SpriteTile(pygame.sprite.Sprite):
     def __init__(self, img, rect):
         pygame.sprite.Sprite.__init__(self)
-        #self.image, self.rect = load_image(filename, -1)
         self.image, self.rect = img, rect
         center = self.rect.center
         self.image = pygame.transform.scale(self.image, (DELTAX+1, DELTAY+1))
         self.rect = self.image.get_rect()
-    
+
     def dig(self, group):
         self.remove(group)
 
 
 def coord_to_tiles(x, y):
     cx = HSCREEN/2.0 - (HBLOCK/2.0) * DELTAX
-    cy = VSCREEN/2.0 - (VBLOCK/2.0) * DELTAY   
+    cy = VSCREEN/2.0 - (VBLOCK/2.0) * DELTAY
     i = (int)((float)(x-cx)/(float)(DELTAX))
     j = (int)((float)(y-cy)/(float)(DELTAY))
     return i, j
-    
+
+
 CX = HSCREEN/2.0 - HBLOCK/2.0 * DELTAX
 CY = VSCREEN/2.0 - VBLOCK/2.0 * DELTAY
-        
-        
+
+
 class Speedseq():
     def __init__(self):
         self.idx = 0
+
     def increase_speed(self):
         self.idx += 1
         if self.idx > len(SPEEDSEQ) - 1:
             self.idx = len(SPEEDSEQ) - 1
-    
-    def decrease_speed(self, nb = 1):
+
+    def decrease_speed(self, nb=1):
         self.idx -= nb
         if self.idx < 0:
             self.idx = 0
+
     def reset_speed(self):
         self.idx = 0
+
     @property
     def speed(self):
         return(SPEEDSEQ[self.idx])
+
 
 class Hero():
     def __init__(self, board):
 
         if DEATHMODE == 1:
             print(XSTART, YSTART)
-            print( board.SCROLLX,  board.SCROLLY)
+            print(board.SCROLLX,  board.SCROLLY)
             self.x = CX + XSTART*DELTAX + board.SCROLLX
             self.y = CY + YSTART*DELTAY + board.SCROLLY
         else:
             self.x = CX + 10*HBLOCK
             self.y = CY
-        
-        
+
         self.vx = 0
         self.vy = 0
         self.speedseq = []
         for i in range(4):
             self.speedseq.append(Speedseq())
         self.sprite = SpriteMan()
-        #self.updateposition(board)
-        
+        # self.updateposition(board)
+
     def updateposition(self, board):
-        
+
         # scrolling
-        if DEATHMODE == 1 and board.playing == True:
+        if DEATHMODE == 1 and board.playing is True:
             if self.x + board.SCROLLX < SCROLLING_DEATHX:
                 print("DEAD")
-        
-        
+
         if self.x + board.SCROLLX < SCROLLING_MINX:
             board.scrolling(-(self.x + board.SCROLLX - SCROLLING_MINX), 0)
-        
+
         if self.x + board.SCROLLX > SCROLLING_MAXX:
             board.scrolling(-(self.x + board.SCROLLX - SCROLLING_MAXX), 0)
-            
+
         if self.y + board.SCROLLY < SCROLLING_MINY:
-            board.scrolling(0,-(self.y + board.SCROLLY - SCROLLING_MINY))
-        
+            board.scrolling(0, -(self.y + board.SCROLLY - SCROLLING_MINY))
+
         if self.y + board.SCROLLY > SCROLLING_MAXY:
-            board.scrolling(0,-(self.y + board.SCROLLY - SCROLLING_MAXY)) 
-        
+            board.scrolling(0, -(self.y + board.SCROLLY - SCROLLING_MAXY))
+
         self.sprite.rect.center = \
             (self.x + board.SCROLLX, self.y + board.SCROLLY)
-    
+
     def updateposition_nockeck(self, board):
         self.sprite.rect.center = \
             (self.x + board.SCROLLX, self.y + board.SCROLLY)
-    
-    
-    
+
     def get_speed(self, dx, dy):
-        return(self.speedseq[2].speed \
-            - self.speedseq[3].speed, \
-            + self.speedseq[1].speed \
-            - self.speedseq[0].speed )
-        
+        return(self.speedseq[2].speed -
+               self.speedseq[3].speed,
+               self.speedseq[1].speed -
+               self.speedseq[0].speed)
+
     def accelerate(self, dx, dy):
         if dy == -1:
             self.speedseq[0].increase_speed()
@@ -216,14 +227,12 @@ class Hero():
         if dx == -1:
             self.speedseq[3].increase_speed()
         return
-        
-
 
     def stopping(self, dx, dy):
-        if dx!=0:
+        if dx != 0:
             self.speedseq[2].reset_speed()
             self.speedseq[3].reset_speed()
-        if dy!=0:
+        if dy != 0:
             self.speedseq[0].reset_speed()
             self.speedseq[1].reset_speed()
 
@@ -232,7 +241,7 @@ class Hero():
         deltax, deltay = self.get_speed(dx, dy)
         self.x = self.x + deltax
         self.y = self.y + deltay
-    
+
     def moving_digging(self, dx, dy):
         if dy == -1:
             self.speedseq[0].decrease_speed(5)
@@ -245,33 +254,30 @@ class Hero():
         deltax, deltay = self.get_speed(dx, dy)
         self.x = self.x + deltax
         self.y = self.y + deltay
-    
 
-        
-        
+
 class Scoring():
     def __init__(self):
-        
+
         self.health = 100
-        
+
         self.combo_timer = get_ticks()
         self.in_a_row = 0
         self.deathscroll = 0.1
         self.deathtimer = get_ticks()
-    
+
     def empty_hit(self):
-    
+
         # reset combo timer
         self.combo_timer = get_ticks()
         self.in_a_row = 0
-        
+
         # reset combo timer
         if numpy.random.rand() <= PROBA_HIT:
             self.health = self.health - 10 - numpy.random.randint(10)
             return True
         return False
-    
-    
+
     def register_dig(self):
         next_timer = get_ticks()
         if self.combo_timer - next_timer < SCORING_ROW:
@@ -287,26 +293,24 @@ class Scoring():
         if get_ticks() - self.deathtimer > 1000:
             self.deathscroll += 0.01
             self.deathtimer = get_ticks()
-            
+
 
 class Move():
-    #UP, DOWN, RIGHT, LEFT: 273, 274, 275, 276
+    # UP, DOWN, RIGHT, LEFT: 273, 274, 275, 276
     def __init__(self):
-        self.push = numpy.array([0,0,0,0])
-        self.when = numpy.array([1,1,1,1])*LARGE_TIME
-    
+        self.push = numpy.array([0, 0, 0, 0])
+        self.when = numpy.array([1, 1, 1, 1])*LARGE_TIME
+
     def key_up(self, key, hero):
         if not(self.is_a_move(key)):
             return
         self.push[key-273] = 0
         self.when[key-273] = LARGE_TIME
         if key == K_UP or key == K_DOWN:
-            hero.stopping(0,1)
+            hero.stopping(0, 1)
         if key == K_LEFT or key == K_RIGHT:
-            hero.stopping(1,0)
-            
-            
-        
+            hero.stopping(1, 0)
+
     def key_down(self, key, hero):
         if not(self.is_a_move(key)):
             return
@@ -320,23 +324,23 @@ class Move():
             hero.vx = -5
         if key == K_RIGHT:
             hero.vx = 5
-        
+
     def launch_mem(self, board):
         if numpy.all(self.push == 0):
             return
         key = numpy.argmin(self.when) + 273
-        
+
         if (get_ticks() - self.when[key-273]) > KEYBOARD_WAIT:
             board.move(key)
-            self.when[key-273] = get_ticks()  
-           
+            self.when[key-273] = get_ticks()
+
     def is_a_move(self, key):
-        return(key == K_LEFT or key == K_RIGHT \
-        or key == K_UP or key == K_DOWN)
+        return(key == K_LEFT or key == K_RIGHT or
+               key == K_UP or key == K_DOWN)
 
 
 class Sound():
-        
+
     def __init__(self):
         self.digsounds = []
         self.digsounds.append(load_sound("ROCKS1.WAV"))
@@ -361,108 +365,104 @@ class Sound():
         self.hurtsounds.append(load_sound("PINBALL.WAV"))
         self.hurtsounds.append(load_sound("punch.wav"))
         self.combosounds = []
-        self.combosounds.append(load_sound("WOOO.WAV"))
+        # self.combosounds.append(load_sound("WOOO.WAV"))
         self.combosounds.append(load_sound("TNT Barrel.wav"))
-        
-    
+
     def play_digsound(self):
-        self.digsounds[numpy.random.randint(0,4)].play()
-        
+        self.digsounds[numpy.random.randint(0, 4)].play()
+
     def play_hitsound(self):
-        self.hitsounds[numpy.random.randint(0,8)].play()
-        
+        self.hitsounds[numpy.random.randint(0, 8)].play()
+
     def play_stepsound(self):
-        self.stepsounds[numpy.random.randint(0,4)].play()
-        
+        self.stepsounds[numpy.random.randint(0, 4)].play()
+
     def play_hurtsound(self):
-        self.hurtsounds[numpy.random.randint(0,2)].play()
-    
+        self.hurtsounds[numpy.random.randint(0, 2)].play()
+
     def play_combosound(self):
-        self.combosounds[numpy.random.randint(0,2)].play()
-        
+        self.combosounds[numpy.random.randint(0, 1)].play()
+
 
 class Board():
     def __init__(self, blocks_loaded, nkeys=NKEYS):
-    
+
         self.blocks_loaded = blocks_loaded
         self.playing = False
         self.SCROLLX = 0
         self.SCROLLY = 0
-    
-        self.tiles = numpy.random.randint(0, nkeys, size=(VBLOCK,HBLOCK))
+
+        self.tiles = numpy.random.randint(0, nkeys, size=(VBLOCK, HBLOCK))
         if DEATHMODE == 0:
-            self.tiles[0,:] = -1
-            self.tiles[-1,:] = -1
-            self.tiles[:,0] = -1
-            self.tiles[:,-1] = -1
-        self.tilesid = numpy.zeros((VBLOCK,HBLOCK))
-        
+            self.tiles[0, :] = -1
+            self.tiles[-1, :] = -1
+            self.tiles[:, 0] = -1
+            self.tiles[:, -1] = -1
+        self.tilesid = numpy.zeros((VBLOCK, HBLOCK))
+
         if DEATHMODE == 1:
-            self.tiles[YSTART-5:YSTART+5,XSTART-5:XSTART+5] = -1
-        
-        
+            self.tiles[YSTART-5:YSTART+5, XSTART-5:XSTART+5] = -1
+
         self.scoring = Scoring()
-        
+
         self.hour = get_ticks()
         self.hero = Hero(self)
         self.sound = Sound()
         self.spritegroup = pygame.sprite.Group()
         self.spritegroup.add(self.hero.sprite)
- 
+
         self.build_blocks_sprites()
         self.place_tiles()
         self.hero.updateposition(self)
-        
+
     def build_blocks_sprites(self):
         self.spritelist = []
         current_id = 0
         for j in range(VBLOCK):
             for i in range(HBLOCK):
-                if self.tiles[j,i] != -1:
-                    self.tilesid[j,i] = current_id
+                if self.tiles[j, i] != -1:
+                    self.tilesid[j, i] = current_id
                     current_id = current_id + 1
-                    img, rect = self.blocks_loaded[self.tiles[j,i]]
+                    img, rect = self.blocks_loaded[self.tiles[j, i]]
                     self.spritelist.append(SpriteTile(img, rect))
-                        #SpriteTile(tilenames[self.tiles[j,i]]) )
-                        
+                    # SpriteTile(tilenames[self.tiles[j,i]]) )
+
                     self.spritelist[-1].add(self.spritegroup)
         self.tilesid = self.tilesid.astype(int)
-              
-    def scrolling(self, dx, dy):   
+
+    def scrolling(self, dx, dy):
         self.SCROLLX += dx
         self.SCROLLY += dy
         self.hero.updateposition_nockeck(self)
         self.place_tiles()
-    
+
     # used in DEATHMODE
     def circular_warping(self):
-        
+
         ibound = (int)((HSCREEN - CX - self.SCROLLX)/DELTAX)
         if ibound >= HBLOCK:
             print("Time to circulate! ")
-            # This should be optimized: do not recreate ALL sprites but just the last column...
+#            This should be optimized:
+#            do not recreate ALL sprites but just the last column...
             self.perform_circular_warping()
-            
+
     # used in DEATHMODE
     def perform_circular_warping(self):
-        
-        self.tiles[:,0:-1] = self.tiles[:,1:]
-        self.tiles[:,-1] = numpy.random.randint(0, NKEYS, size=(VBLOCK))
+
+        self.tiles[:, 0:-1] = self.tiles[:, 1:]
+        self.tiles[:, -1] = numpy.random.randint(0, NKEYS, size=(VBLOCK))
         self.spritegroup.empty()
         self.spritegroup.add(self.hero.sprite)
         self.build_blocks_sprites()
-        
+
         self.scrolling(DELTAX, 0)
         self.hero.x = self.hero.x - DELTAX
-    
-    
- 
-                    
+
     def move(self, key):
         dx = 0
         dy = 0
         i, j = coord_to_tiles(self.hero.x, self.hero.y)
-        
+
         if (key == K_LEFT):
             dx = -1
         #   if (self.hero.x == 0):
@@ -479,61 +479,59 @@ class Board():
             dy = 1
         #    if (j >= VBLOCK-1):
         #       return
-        
+
         dist_x = (self.hero.x - (CX + i*DELTAX))
         dist_y = (self.hero.y - (CY + j*DELTAY))
-        speed_x, speed_y = self.hero.get_speed(dx, dy)      
-        
+        speed_x, speed_y = self.hero.get_speed(dx, dy)
+
         collision = False
 
         if dx == 1 and dist_x + HITBOXX + speed_x >= 0.5*DELTAX:
             collision = True
-            if dist_y/DELTAY <= 0.5:               
+            if dist_y/DELTAY <= 0.5:
                 k, l = i+1, j
             else:
                 k, l = i+1, j+1
-        
+
         if dx == -1 and dist_x - HITBOXX + speed_x <= 0.5*DELTAX:
             collision = True
-            if dist_y/DELTAY <= 0.5:               
+            if dist_y/DELTAY <= 0.5:
                 k, l = i, j
             else:
-                k, l = i, j+1    
-                    
+                k, l = i, j+1
+
         if dy == 1 and dist_y + HITBOXY + speed_y >= 0.5*DELTAY:
             collision = True
-            if dist_x/DELTAX <= 0.5:               
+            if dist_x/DELTAX <= 0.5:
                 k, l = i, j+1
             else:
                 k, l = i+1, j+1
-        
+
         if dy == -1 and dist_y - HITBOXY + speed_y <= 0.5*DELTAY:
             collision = True
-            if dist_x/DELTAX <= 0.5:               
+            if dist_x/DELTAX <= 0.5:
                 k, l = i, j
             else:
                 k, l = i+1, j
-        
 
-        if collision == True and self.tiles[l, k] == -1:
+        if collision is True and self.tiles[l, k] == -1:
             collision = False
-       
 
         # step in an empty space
-        #if self.tiles[j+dy,i+dx] == -1:
-        if collision == False:
+        # if self.tiles[j+dy,i+dx] == -1:
+        if collision is False:
             self.hero.moving(dx, dy)
-            #self.hero.x = self.hero.x + dx
-            #self.hero.y = self.hero.y + dy
+            # self.hero.x = self.hero.x + dx
+            # self.hero.y = self.hero.y + dy
             self.sound.play_stepsound()
             self.hero.updateposition(self)
 
         # Attempt to dig
-        if collision == True:
-        #if self.tiles[j+dy,i+dx] != -1:
+        if collision is True:
+            # if self.tiles[j+dy,i+dx] != -1:
             if self.find_match_to_one_tile(k, l, i, j):
-                #self.hero.x = self.hero.x + dx
-                #self.hero.y = self.hero.y + dy
+                # self.hero.x = self.hero.x + dx
+                # self.hero.y = self.hero.y + dy
                 self.hero.moving_digging(dx, dy)
                 self.hero.updateposition(self)
                 if self.scoring.register_dig():
@@ -548,24 +546,23 @@ class Board():
                     self.sound.play_hurtsound()
                 else:
                     self.sound.play_hitsound()
-    
+
     def place_tiles(self):
-    
+
         cx = HSCREEN/2.0 - HBLOCK/2.0 * DELTAX
-        cy = VSCREEN/2.0 - VBLOCK/2.0 * DELTAY   
- 
-        
+        cy = VSCREEN/2.0 - VBLOCK/2.0 * DELTAY
+
         for j in range(VBLOCK):
             for i in range(HBLOCK):
-                if self.tiles[j,i] != -1:
+                if self.tiles[j, i] != -1:
                     dx = i*DELTAX
                     dy = j*DELTAY
-                    currentid = self.tilesid[j,i]
+                    currentid = self.tilesid[j, i]
                     self.spritelist[currentid].rect.center = \
                         (cx + dx + self.SCROLLX, cy + dy + self.SCROLLY)
 
     def find_match_to_one_tile(self, i, j, io, jo):
-        #reduced view
+        # reduced view
         imin = io - MATCH_VIEWX if io - MATCH_VIEWX >= 0 else 0
         imax = io + MATCH_VIEWX if io + MATCH_VIEWX < HBLOCK-1 else HBLOCK - 1
         jmin = jo - MATCH_VIEWY if jo - MATCH_VIEWY >= 0 else 0
@@ -573,133 +570,125 @@ class Board():
         # position of the tile of interest in the view
         i, j = i - imin, j - jmin
         io, jo = io - imin, jo - jmin
-        
+
         local_tiles = copy.deepcopy(self.tiles[jmin:jmax, imin:imax])
-        # Just use a memorized patch if the view is full. Else, search in the square. Can be fixed later or never.
+        # Just use a memorized patch if the view is full.
+        # Else, search in the square. Can be fixed later or never.
         if jmax-jmin == 2*MATCH_VIEWY and imax-imin == 2*MATCH_VIEWX:
-            local_tiles[PATCH == 0] = -2          
-        
-       
-        idx_list = numpy.argwhere(local_tiles == local_tiles[j,i])
-        
+            local_tiles[PATCH == 0] = -2
+
+        idx_list = numpy.argwhere(local_tiles == local_tiles[j, i])
+
         list_match = []
-        
+
         for idx in range(idx_list.shape[0]):
             k = idx_list[idx, 1]
             l = idx_list[idx, 0]
             connect = match_func.find_connection(i, j, k, l, local_tiles)
-            if connect == True and (i != k or j != l):
+            if connect is True and (i != k or j != l):
                 list_match.append([k, l])
-        
+
         if list_match == []:
             return False
-            
+
         distances = []
         for pair in list_match:
             distances.append(((i-pair[0])**2.0 + (j-pair[1])**2.0)**0.5)
-        
+
         rank = numpy.argmin(distances)
         k = list_match[rank][0]
         l = list_match[rank][1]
-        
+
         self.group_dig(i+imin, j+jmin)
         self.group_dig(k+imin, l+jmin)
         return True
-        
-    def group_dig(self,i,j):
-        index = self.tilesid[j,i]
+
+    def group_dig(self, i, j):
+        index = self.tilesid[j, i]
         self.spritelist[index].dig(self.spritegroup)
-        self.tiles[j,i] = -1
-
-
+        self.tiles[j, i] = -1
 
 
 def main():
     """this function is called when the program starts.
        it initializes everything it needs, then runs in
        a loop until the function returns."""
-#Initialize Everything
+# Initialize Everything
     pygame.init()
     screen = pygame.display.set_mode((HSCREEN, VSCREEN))
     pygame.display.set_caption('Matchit_Digit')
     pygame.mouse.set_visible(0)
 
-#Create The Backgound
+# Create The Backgound
     background = pygame.Surface(screen.get_size())
     background = background.convert()
     background.fill((50, 20, 10))
 
-   
-    
 
-#Create font
+# Create font
     if pygame.font:
         font = pygame.font.Font(None, fontsize)
-        
-#Display The Background
+
+# Display The Background
     screen.blit(background, (0, 0))
     pygame.display.flip()
 
-#Prepare Game Objects
+# Prepare Game Objects
     clock = pygame.time.Clock()
 
     blocks_loaded = [load_image(i) for i in tilenames]
     board = Board(blocks_loaded)
     move = Move()
-    
+
     if DEATHMODE == 1:
-        board.scrolling(500,0)
+        board.scrolling(500, 0)
     board.playing = True
 
-#Main Loop
+# Main Loop
     going = True
     sound_loop = 0
     current_key = -1
-    
+
     while going:
         clock.tick(30)
 
         move.launch_mem(board)
-        
-        #Handle Input Events
+
+        # Handle Input Events
         for event in pygame.event.get():
-        
+
             if event.type == KEYDOWN:
                 move.key_down(event.key, board.hero)
-                
+
             if event.type == KEYUP:
                 move.key_up(event.key, board.hero)
-            
+
             if event.type == QUIT:
                 going = False
-                
+
             elif event.type == KEYDOWN and event.key == K_ESCAPE:
                 going = False
-                
+
             elif event.type == KEYDOWN and move.is_a_move(event.key):
                 board.move(event.key)
-        
-        board.scrolling(0,0)
-        
+
+        board.scrolling(0, 0)
+
         if DEATHMODE == 1:
             board.scoring.increase_deathscroll()
-            board.scrolling(-board.scoring.deathscroll,0)
+            board.scrolling(-board.scoring.deathscroll, 0)
             board.circular_warping()
-        
 
-        #Draw Everything
+        # Draw Everything
         screen.blit(background, (0, 0))
         board.spritegroup.draw(screen)
         pygame.display.flip()
 
-
     pygame.quit()
 
-#Game Over
+# Game Over
 
 
-#this calls the 'main' function when this script is executed
+# this calls the 'main' function when this script is executed
 if __name__ == '__main__':
     main()
-
-    
