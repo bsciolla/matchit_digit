@@ -18,6 +18,42 @@ import numpy
 from pygame.locals import *
 from pygame.compat import geterror
 
+
+#functions to create our resources
+def load_image(name, colorkey=None):
+    fullname = os.path.join(data_dir, name)
+    try:
+        image = pygame.image.load(fullname)
+    except pygame.error:
+        print ('Cannot load image:', fullname)
+        raise SystemExit(str(geterror()))
+    image = image.convert()
+    if colorkey is not None:
+        if colorkey is -1:
+            colorkey = image.get_at((0,0))
+        image.set_colorkey(colorkey, RLEACCEL)
+    return image, image.get_rect()
+
+def load_sound(name):
+    class NoneSound:
+        def play(self): pass
+    if not pygame.mixer or not pygame.mixer.get_init():
+        return NoneSound()
+    fullname = os.path.join(data_dir, name)
+    try:
+        sound = pygame.mixer.Sound(fullname)
+    except pygame.error:
+        print ('Cannot load sound: %s' % fullname)
+        raise SystemExit(str(geterror()))
+    return sound
+
+
+DEATHMODE = 1
+XSTART = 15
+YSTART = 15
+SCROLLING_DEATHX = 100 
+
+
 HSCREEN = 800
 VSCREEN = 600
 
@@ -27,17 +63,17 @@ FADE_WAIT = 10
 KEYBOARD_WAIT = 70
 PROBA_HIT = 0.4
 
-HBLOCK = 50
+HBLOCK = 40
 VBLOCK = 50
 
 DELTAX = 32
 DELTAY = 32
 
-SCROLLING_MINX = 200
+SCROLLING_MINX = 200 if DEATHMODE == 0 else 1
 SCROLLING_MAXX = HSCREEN - 200
 SCROLLING_MINY = 200
 SCROLLING_MAXY = VSCREEN - 200
-
+assert(DEATHMODE == 0 or SCROLLING_DEATHX > SCROLLING_MINX)
 
 SCORING_ROW = 1000
 
@@ -86,15 +122,15 @@ class SpriteMan(pygame.sprite.Sprite):
         self.image = pygame.transform.scale(self.image, ((int)(0.7*(DELTAX+1)), (int)(0.7*(DELTAY+1))))
         self.rect = self.image.get_rect()
 
-
 class SpriteTile(pygame.sprite.Sprite):
-    def __init__(self, filename):
+    def __init__(self, img, rect):
         pygame.sprite.Sprite.__init__(self)
-        self.image, self.rect = load_image(filename, -1)
+        #self.image, self.rect = load_image(filename, -1)
+        self.image, self.rect = img, rect
         center = self.rect.center
         self.image = pygame.transform.scale(self.image, (DELTAX+1, DELTAY+1))
         self.rect = self.image.get_rect()
-        
+    
     def dig(self, group):
         self.remove(group)
 
@@ -134,8 +170,17 @@ class Speedseq():
 
 class Hero():
     def __init__(self, board):
-        self.x = CX + 10*HBLOCK
-        self.y = CY
+
+        if DEATHMODE == 1:
+            print(XSTART, YSTART)
+            print( board.SCROLLX,  board.SCROLLY)
+            self.x = CX + XSTART*DELTAX + board.SCROLLX
+            self.y = CY + YSTART*DELTAY + board.SCROLLY
+        else:
+            self.x = CX + 10*HBLOCK
+            self.y = CY
+        
+        
         self.vx = 0
         self.vy = 0
         self.speedseq = []
@@ -147,6 +192,11 @@ class Hero():
     def updateposition(self, board):
         
         # scrolling
+        if DEATHMODE == 1 and board.playing == True:
+            if self.x + board.SCROLLX < SCROLLING_DEATHX:
+                print("DEAD")
+           
+        
         if self.x + board.SCROLLX < SCROLLING_MINX:
             board.scrolling(-(self.x + board.SCROLLX - SCROLLING_MINX), 0)
         
@@ -343,17 +393,24 @@ class Sound():
         
 
 class Board():
-    def __init__(self, nkeys=NKEYS):
+    def __init__(self, blocks_loaded, nkeys=NKEYS):
     
+        self.blocks_loaded = blocks_loaded
+        self.playing = False
         self.SCROLLX = 0
         self.SCROLLY = 0
     
         self.tiles = numpy.random.randint(0, nkeys, size=(VBLOCK,HBLOCK))
-        self.tiles[0,:] = -1
-        self.tiles[-1,:] = -1
-        self.tiles[:,0] = -1
-        self.tiles[:,-1] = -1
+        if DEATHMODE == 0:
+            self.tiles[0,:] = -1
+            self.tiles[-1,:] = -1
+            self.tiles[:,0] = -1
+            self.tiles[:,-1] = -1
         self.tilesid = numpy.zeros((VBLOCK,HBLOCK))
+        
+        if DEATHMODE == 1:
+            self.tiles[YSTART-5:YSTART+5,XSTART-5:XSTART+5] = -1
+        
         
         self.scoring = Scoring()
         
@@ -364,6 +421,11 @@ class Board():
         self.spritegroup = pygame.sprite.Group()
         self.spritegroup.add(self.hero.sprite)
  
+        self.build_blocks_sprites()
+        self.place_tiles()
+        self.hero.updateposition(self)
+        
+    def build_blocks_sprites(self):
         self.spritelist = []
         current_id = 0
         for j in range(VBLOCK):
@@ -371,19 +433,40 @@ class Board():
                 if self.tiles[j,i] != -1:
                     self.tilesid[j,i] = current_id
                     current_id = current_id + 1
-                    self.spritelist.append(\
-                        SpriteTile(tilenames[self.tiles[j,i]]) )
+                    img, rect = self.blocks_loaded[self.tiles[j,i]]
+                    self.spritelist.append(SpriteTile(img, rect))
+                        #SpriteTile(tilenames[self.tiles[j,i]]) )
+                        
                     self.spritelist[-1].add(self.spritegroup)
         self.tilesid = self.tilesid.astype(int)
-        self.place_tiles()
-        
-              
               
     def scrolling(self, dx, dy):   
         self.SCROLLX += dx
         self.SCROLLY += dy
         self.hero.updateposition_nockeck(self)
         self.place_tiles()
+    
+    # used in DEATHMODE
+    def circular_warping(self):
+        
+        ibound = (int)((HSCREEN - CX - self.SCROLLX)/DELTAX)
+        if ibound >= HBLOCK:
+            print("Time to circulate! ")
+            # This should be optimized: do not recreate ALL sprites but just the last column...
+            self.perform_circular_warping()
+            
+    # used in DEATHMODE
+    def perform_circular_warping(self):
+        
+        self.tiles[:,0:-1] = self.tiles[:,1:]
+        self.tiles[:,-1] = numpy.random.randint(0, NKEYS, size=(VBLOCK))
+        self.spritegroup.empty()
+        self.spritegroup.add(self.hero.sprite)
+        self.build_blocks_sprites()
+        
+        self.scrolling(DELTAX, 0)
+        self.hero.x = self.hero.x - DELTAX
+    
     
  
                     
@@ -477,7 +560,7 @@ class Board():
                     self.sound.play_hurtsound()
                 else:
                     self.sound.play_hitsound()
-                
+    
     def place_tiles(self):
     
         cx = HSCREEN/2.0 - HBLOCK/2.0 * DELTAX
@@ -763,34 +846,6 @@ def is_free_vertical(j,jt,i,tiles):
     return(numpy.all(tiles[j:jt+1,i]==-1) )
     
 
-#functions to create our resources
-def load_image(name, colorkey=None):
-    fullname = os.path.join(data_dir, name)
-    try:
-        image = pygame.image.load(fullname)
-    except pygame.error:
-        print ('Cannot load image:', fullname)
-        raise SystemExit(str(geterror()))
-    image = image.convert()
-    if colorkey is not None:
-        if colorkey is -1:
-            colorkey = image.get_at((0,0))
-        image.set_colorkey(colorkey, RLEACCEL)
-    return image, image.get_rect()
-
-def load_sound(name):
-    class NoneSound:
-        def play(self): pass
-    if not pygame.mixer or not pygame.mixer.get_init():
-        return NoneSound()
-    fullname = os.path.join(data_dir, name)
-    try:
-        sound = pygame.mixer.Sound(fullname)
-    except pygame.error:
-        print ('Cannot load sound: %s' % fullname)
-        raise SystemExit(str(geterror()))
-    return sound
-
 
 
 
@@ -802,13 +857,16 @@ def main():
 #Initialize Everything
     pygame.init()
     screen = pygame.display.set_mode((HSCREEN, VSCREEN))
-    pygame.display.set_caption('Monkey Fever')
+    pygame.display.set_caption('Matchit_Digit')
     pygame.mouse.set_visible(0)
 
 #Create The Backgound
     background = pygame.Surface(screen.get_size())
     background = background.convert()
     background.fill((50, 20, 10))
+
+    blocks_loaded = [load_image(i) for i in tilenames]
+    
 
 #Create font
     if pygame.font:
@@ -839,13 +897,18 @@ def main():
 
     allsprites = pygame.sprite.RenderPlain(())
 
-    board = Board()
+    board = Board(blocks_loaded)
     move = Move()
+    
+    if DEATHMODE == 1:
+        board.scrolling(500,0)
+    board.playing = True
 
 #Main Loop
     going = True
     sound_loop = 0
     current_key = -1
+    
     while going:
         clock.tick(30)
 
@@ -874,6 +937,11 @@ def main():
             
         
         board.scrolling(0,0)
+        
+        if DEATHMODE == 1:
+            board.scrolling(-0.1,0)
+            board.circular_warping()
+        
         allsprites.update()
 
         #Draw Everything
