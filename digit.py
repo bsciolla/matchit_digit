@@ -27,11 +27,19 @@ FADE_WAIT = 10
 KEYBOARD_WAIT = 70
 PROBA_HIT = 0.4
 
-HBLOCK = 18
-VBLOCK = 14
+HBLOCK = 50
+VBLOCK = 50
 
 DELTAX = 32
 DELTAY = 32
+
+SCROLLING_MINX = 200
+SCROLLING_MAXX = HSCREEN - 200
+SCROLLING_MINY = 200
+SCROLLING_MAXY = VSCREEN - 200
+
+
+SCORING_ROW = 1000
 
 HITBOXX = 0.7*(DELTAX+1)*0.5
 HITBOXY = 0.7*(DELTAY+1)*0.5
@@ -51,7 +59,7 @@ for i in range(NKEYS):
     colorkeys.append( (255*x, 255*(1-x), 255*(1-x/2)**2.0) )
    
 def get_ticks():
-    return(get_ticks())
+    return(pygame.time.get_ticks())
 
 
 def find_corresponding_key(keyboardkey):
@@ -126,7 +134,7 @@ class Speedseq():
 
 class Hero():
     def __init__(self, board):
-        self.x = CX
+        self.x = CX + 10*HBLOCK
         self.y = CY
         self.vx = 0
         self.vy = 0
@@ -134,11 +142,31 @@ class Hero():
         for i in range(4):
             self.speedseq.append(Speedseq())
         self.sprite = SpriteMan()
-        self.updateposition(board)
+        #self.updateposition(board)
         
     def updateposition(self, board):
+        
+        # scrolling
+        if self.x + board.SCROLLX < SCROLLING_MINX:
+            board.scrolling(-(self.x + board.SCROLLX - SCROLLING_MINX), 0)
+        
+        if self.x + board.SCROLLX > SCROLLING_MAXX:
+            board.scrolling(-(self.x + board.SCROLLX - SCROLLING_MAXX), 0)
+            
+        if self.y + board.SCROLLY < SCROLLING_MINY:
+            board.scrolling(0,-(self.y + board.SCROLLY - SCROLLING_MINY))
+        
+        if self.y + board.SCROLLY > SCROLLING_MAXY:
+            board.scrolling(0,-(self.y + board.SCROLLY - SCROLLING_MAXY)) 
+        
         self.sprite.rect.center = \
             (self.x + board.SCROLLX, self.y + board.SCROLLY)
+    
+    def updateposition_nockeck(self, board):
+        self.sprite.rect.center = \
+            (self.x + board.SCROLLX, self.y + board.SCROLLY)
+    
+    
     
     def get_speed(self, dx, dy):
         return(self.speedseq[2].speed \
@@ -191,8 +219,9 @@ class Hero():
         
 class Scoring():
     def __init__(self):
-        self.health = 100;
-        self.dig_timer = ;
+        self.health = 100
+        self.dig_timer = get_ticks()
+        self.in_a_row = 0
     
     def empty_hit(self):
         if numpy.random.rand() <= PROBA_HIT:
@@ -201,6 +230,16 @@ class Scoring():
         return False
         
     def register_dig(self):
+        next_timer = get_ticks()
+        if self.dig_timer - next_timer < SCORING_ROW:
+            self.in_a_row += 1
+        else:
+            self.in_a_row = 0
+        self.dig_timer = next_timer
+        if self.in_a_row >= 3:
+            return True
+        return False
+                    
         
 
 class Move():
@@ -325,10 +364,10 @@ class Board():
               
               
               
-    def scrolling(self, dx, dy):
+    def scrolling(self, dx, dy):   
         self.SCROLLX += dx
         self.SCROLLY += dy
-        self.hero.updateposition(self)
+        self.hero.updateposition_nockeck(self)
         self.place_tiles()
     
  
@@ -822,7 +861,7 @@ def main():
         
             
         
-        #board.scrolling(1,0)
+        board.scrolling(0,0)
         allsprites.update()
 
         #Draw Everything
