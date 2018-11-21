@@ -13,9 +13,11 @@ import math
 from pygame.locals import *
 from pygame.compat import geterror
 import match_func
-
+import sound
 
 # functions to create our resources
+
+
 def load_image(name, colorkey=None):
     fullname = os.path.join(data_dir, name)
     try:
@@ -31,27 +33,15 @@ def load_image(name, colorkey=None):
     return image, image.get_rect()
 
 
-def load_sound(name):
-    class NoneSound:
-        def play(self): pass
-    if not pygame.mixer or not pygame.mixer.get_init():
-        return NoneSound()
-    fullname = os.path.join(data_dir, name)
-    try:
-        sound = pygame.mixer.Sound(fullname)
-    except pygame.error:
-        print('Cannot load sound: %s' % fullname)
-        raise SystemExit(str(geterror()))
-    return sound
-
-
-DEATHMODE = 1
+DEATHMODE = 0
 XSTART = 15
 YSTART = 15
 SCROLLING_DEATHX = 100
 
 MATCH_VIEWX = 10
 MATCH_VIEWY = 10
+
+ANIMRATE = 200
 
 # Ellipsoidal patch for matching search
 PATCH = numpy.zeros((MATCH_VIEWY*2, MATCH_VIEWX*2))
@@ -68,10 +58,10 @@ VSCREEN = 600
 LARGE_TIME = sys.maxsize
 
 FADE_WAIT = 10
-KEYBOARD_WAIT = 70
+KEYBOARD_WAIT = 10
 PROBA_HIT = 0.4
 
-HBLOCK = 40
+HBLOCK = 50
 VBLOCK = 50
 
 DELTAX = 32
@@ -88,13 +78,17 @@ SCORING_ROW = 1000
 HITBOXX = 0.7*(DELTAX+1)*0.5
 HITBOXY = 0.7*(DELTAY+1)*0.5
 
-SPEEDSEQ = numpy.array([0, 4, 5, 6, 7, 7.5, 8, 8.5, 9])*1.2
+SPEEDSEQ = numpy.array([0, 4, 5, 6, 6.3, 6.6, 6.9, 7.2, 7.5, 7.8,
+                        8.1, 8.4, 8.7, 9., 9.3, 9.6, 9.9])*0.7
 
 fontsize = 30
-NKEYS = 16
+NKEYS = 32
+LIFESPAN = 1500
 
-tilenames = ['blocks/ore'+str(i)+'.png' for i in range(1, 9)] + \
-    ['blocks/rock'+str(i)+'.png' for i in range(1, 9)]
+tilenames = ['blocks/ore'+str(i)+'.png' for i in range(1, 15)] + \
+    ['blocks/rock'+str(i)+'.png' for i in range(1, 19)]
+
+exanames = ['exa'+str(i)+'.png' for i in range(1, 10)]
 
 
 def get_ticks():
@@ -114,16 +108,15 @@ class SpriteMan(pygame.sprite.Sprite):
     def __init__(self):
         pygame.sprite.Sprite.__init__(self)
         self.image, self.rect = load_image("dwarf_face.png", -1)
-        center = self.rect.center
         self.image = pygame.transform.scale(
             self.image, ((int)(0.7*(DELTAX+1)), (int)(0.7*(DELTAY+1))))
         self.rect = self.image.get_rect()
+
 
 class SpriteCompanion(pygame.sprite.Sprite):
     def __init__(self, name):
         pygame.sprite.Sprite.__init__(self)
         self.image, self.rect = load_image(name, -1)
-        center = self.rect.center
         self.image = pygame.transform.scale(
             self.image, ((int)(0.5*(DELTAX+1)), (int)(0.5*(DELTAY+1))))
         self.rect = self.image.get_rect()
@@ -133,12 +126,85 @@ class SpriteTile(pygame.sprite.Sprite):
     def __init__(self, img, rect):
         pygame.sprite.Sprite.__init__(self)
         self.image, self.rect = img, rect
-        center = self.rect.center
         self.image = pygame.transform.scale(self.image, (DELTAX+1, DELTAY+1))
         self.rect = self.image.get_rect()
 
     def dig(self, group):
         self.remove(group)
+
+
+class ExplosionTile(pygame.sprite.Sprite):
+
+    def __init__(self, img, xini, yini):
+
+        pygame.sprite.Sprite.__init__(self)
+        self.image = img
+        self.image = pygame.transform.scale(self.image, (numpy.random.randint(2, (int)((DELTAX+1)/2.0)),
+                                                         numpy.random.randint(2, (int)((DELTAY+1)/2.0))))
+        # X, Y = self.image.get_size()
+        # self.image = self.image[x1:x2,y1:y2]
+        # self.image = pygame.transform.scale(self.image, (DELTAX+1, DELTAY+1))
+        self.rect = self.image.get_rect()
+        self.vx = (-0.5+numpy.random.rand())*3
+        self.vy = (-0.5+numpy.random.rand())*3
+        self.x = xini
+        self.y = yini
+        self.timer = get_ticks() + numpy.random.randint((int)(LIFESPAN/2), LIFESPAN)
+
+    def moving(self, board):
+
+        self.x = self.x + self.vx
+        self.y = self.y + self.vy
+        # gravity
+        self.vy = self.vy + 0.1
+        # bounce
+        if self.vy > 0 and numpy.random.randint(20) == 0:
+            self.vy = -self.vy
+            self.vx = self.vx + (-0.5+numpy.random.rand())
+
+        self.rect.center = \
+            (self.x + board.SCROLLX, self.y + board.SCROLLY)
+        if (get_ticks() > self.timer):
+            self.remove(board.spritegroup_other)
+            board.explosiontiles.remove(self)
+
+
+class AnimatedTile(pygame.sprite.Sprite):
+
+    def __init__(self, imglist, xini, yini, board):
+
+        pygame.sprite.Sprite.__init__(self)
+        self.imagelist = imglist
+        self.iterframe = 0
+        self.image = self.imagelist[self.iterframe][0]
+        self.rect = self.image.get_rect()
+        self.x = xini
+        self.y = yini
+        self.timer = get_ticks() + ANIMRATE
+        self.board = board
+        self.rect.center = \
+            (self.x + self.board.SCROLLX, self.y + self.board.SCROLLY)
+
+    def update(self):
+        self.rect.center = \
+            (self.x + self.board.SCROLLX, self.y + self.board.SCROLLY)
+        if (get_ticks() > self.timer):
+            self.nextTile()
+
+    def nextTile(self):
+        self.iterframe += 1
+        if self.iterframe > len(self.imagelist) - 1:
+            self.ending()
+            return
+        self.timer = get_ticks() + ANIMRATE
+        self.image = self.imagelist[self.iterframe][0]
+        self.rect = self.image.get_rect()
+        self.rect.center = \
+            (self.x + self.board.SCROLLX, self.y + self.board.SCROLLY)
+        self.timer = get_ticks() + ANIMRATE
+
+    def ending(self):
+        self.remove(self.board.spritegroup_other)
 
 
 def coord_to_tiles(x, y):
@@ -192,23 +258,20 @@ class Hero():
         self.speedseq = []
         for i in range(4):
             self.speedseq.append(Speedseq())
-        self.sprite = SpriteMan()
-        
-        self.companion1 = SpriteCompanion("undine.png")
-        self.companion2 = SpriteCompanion("lumina.png")
-        
-        # self.updateposition(board)
 
+        self.sprite = SpriteMan()
+        # self.companion1 = SpriteCompanion("undine.png")
+        # self.companion2 = SpriteCompanion("lumina.png")
 
     def updatecompanions(self, board):
-        angular_speed = 3.14/1000.
+        angular_speed = 3.14/5000.
         self.companion1.rect.center = \
             (self.x + board.SCROLLX + MATCH_VIEWX*DELTAX*math.cos(get_ticks()*angular_speed),
              self.y + board.SCROLLY + MATCH_VIEWY*DELTAY*math.sin(get_ticks()*angular_speed))
         self.companion2.rect.center = \
             (self.x + board.SCROLLX + MATCH_VIEWX*DELTAX*math.cos(get_ticks()*angular_speed + math.pi),
-             self.y + board.SCROLLY + MATCH_VIEWY*DELTAY*math.sin(get_ticks()*angular_speed + math.pi))  
-    
+             self.y + board.SCROLLY + MATCH_VIEWY*DELTAY*math.sin(get_ticks()*angular_speed + math.pi))
+
     def updateposition(self, board):
 
         # scrolling
@@ -233,7 +296,8 @@ class Hero():
     def updateposition_nockeck(self, board):
         self.sprite.rect.center = \
             (self.x + board.SCROLLX, self.y + board.SCROLLY)
-        self.updatecompanions(board)
+        # self.updatecompanions(board)
+        board.updateexplosiontiles()
 
     def get_speed(self, dx, dy):
         return(self.speedseq[2].speed -
@@ -289,12 +353,14 @@ class Scoring():
         self.in_a_row = 0
         self.deathscroll = 0.1
         self.deathtimer = get_ticks()
+        self.factor = 1
 
     def empty_hit(self):
 
         # reset combo timer
         self.combo_timer = get_ticks()
         self.in_a_row = 0
+        self.factor = 1
 
         # reset combo timer
         if numpy.random.rand() <= PROBA_HIT:
@@ -304,12 +370,14 @@ class Scoring():
 
     def register_dig(self):
         next_timer = get_ticks()
-        if self.combo_timer - next_timer < SCORING_ROW:
+        if self.combo_timer - next_timer < SCORING_ROW/self.factor:
             self.in_a_row += 1
         else:
             self.in_a_row = 0
         self.combo_timer = next_timer
         if self.in_a_row >= 3:
+            self.in_a_row = 0
+            self.factor += 0.2
             return True
         return False
 
@@ -363,55 +431,11 @@ class Move():
                key == K_UP or key == K_DOWN)
 
 
-class Sound():
-
-    def __init__(self):
-        self.digsounds = []
-        self.digsounds.append(load_sound("ROCKS1.WAV"))
-        self.digsounds.append(load_sound("ROCKS2.WAV"))
-        self.digsounds.append(load_sound("ROCKS3.WAV"))
-        self.digsounds.append(load_sound("ROCKS4.WAV"))
-        self.hitsounds = []
-        self.hitsounds.append(load_sound("DIG1.WAV"))
-        self.hitsounds.append(load_sound("DIG2.WAV"))
-        self.hitsounds.append(load_sound("DIG3.WAV"))
-        self.hitsounds.append(load_sound("DIG4.WAV"))
-        self.hitsounds.append(load_sound("DIG5.WAV"))
-        self.hitsounds.append(load_sound("DIG6.WAV"))
-        self.hitsounds.append(load_sound("DIG7.WAV"))
-        self.hitsounds.append(load_sound("DIG8.WAV"))
-        self.stepsounds = []
-        self.stepsounds.append(load_sound("FOOT1A.WAV"))
-        self.stepsounds.append(load_sound("FOOT2A.WAV"))
-        self.stepsounds.append(load_sound("FOOT3A.WAV"))
-        self.stepsounds.append(load_sound("FOOT4A.WAV"))
-        self.hurtsounds = []
-        self.hurtsounds.append(load_sound("PINBALL.WAV"))
-        self.hurtsounds.append(load_sound("punch.wav"))
-        self.combosounds = []
-        # self.combosounds.append(load_sound("WOOO.WAV"))
-        self.combosounds.append(load_sound("TNT Barrel.wav"))
-
-    def play_digsound(self):
-        self.digsounds[numpy.random.randint(0, 4)].play()
-
-    def play_hitsound(self):
-        self.hitsounds[numpy.random.randint(0, 8)].play()
-
-    def play_stepsound(self):
-        self.stepsounds[numpy.random.randint(0, 4)].play()
-
-    def play_hurtsound(self):
-        self.hurtsounds[numpy.random.randint(0, 2)].play()
-
-    def play_combosound(self):
-        self.combosounds[numpy.random.randint(0, 1)].play()
-
-
 class Board():
-    def __init__(self, blocks_loaded, nkeys=NKEYS):
+    def __init__(self, blocks_loaded, anim_loaded, nkeys=NKEYS):
 
         self.blocks_loaded = blocks_loaded
+        self.anim_loaded = anim_loaded
         self.playing = False
         self.SCROLLX = 0
         self.SCROLLY = 0
@@ -420,8 +444,10 @@ class Board():
         if DEATHMODE == 0:
             self.tiles[0, :] = -1
             self.tiles[-1, :] = -1
+            self.tiles[-2, :] = -1
             self.tiles[:, 0] = -1
             self.tiles[:, -1] = -1
+            self.tiles[:, -2] = -1
         self.tilesid = numpy.zeros((VBLOCK, HBLOCK))
 
         if DEATHMODE == 1:
@@ -431,13 +457,15 @@ class Board():
 
         self.hour = get_ticks()
         self.hero = Hero(self)
-        self.sound = Sound()
+        self.sound = sound.Sound()
         self.spritegroup = pygame.sprite.Group()
-        
-        self.spritegroup.add(self.hero.sprite)
-        self.spritegroup.add(self.hero.companion1)
-        self.spritegroup.add(self.hero.companion2)
-        
+        self.spritegroup_other = pygame.sprite.Group()
+
+        self.spritegroup_other.add(self.hero.sprite)
+        # self.spritegroup_other.add(self.hero.companion1)
+        # self.spritegroup_other.add(self.hero.companion2)
+        self.explosiontiles = []
+
         self.build_blocks_sprites()
         self.place_tiles()
         self.hero.updateposition(self)
@@ -468,9 +496,8 @@ class Board():
 
         ibound = (int)((HSCREEN - CX - self.SCROLLX)/DELTAX)
         if ibound >= HBLOCK:
-            print("Time to circulate! ")
-#            This should be optimized:
-#            do not recreate ALL sprites but just the last column...
+            #            This should be optimized:
+            #            do not recreate ALL sprites but just the last column...
             self.perform_circular_warping()
 
     # used in DEATHMODE
@@ -479,7 +506,6 @@ class Board():
         self.tiles[:, 0:-1] = self.tiles[:, 1:]
         self.tiles[:, -1] = numpy.random.randint(0, NKEYS, size=(VBLOCK))
         self.spritegroup.empty()
-        self.spritegroup.add(self.hero.sprite)
         self.build_blocks_sprites()
 
         self.scrolling(DELTAX, 0)
@@ -548,21 +574,16 @@ class Board():
         # if self.tiles[j+dy,i+dx] == -1:
         if collision is False:
             self.hero.moving(dx, dy)
-            # self.hero.x = self.hero.x + dx
-            # self.hero.y = self.hero.y + dy
             self.sound.play_stepsound()
             self.hero.updateposition(self)
 
         # Attempt to dig
         if collision is True:
-            # if self.tiles[j+dy,i+dx] != -1:
+            # Dig is allowed
             if self.find_match_to_one_tile(k, l, i, j):
-                # self.hero.x = self.hero.x + dx
-                # self.hero.y = self.hero.y + dy
                 self.hero.moving_digging(dx, dy)
                 self.hero.updateposition(self)
                 if self.scoring.register_dig():
-                    print("combo")
                     self.sound.play_combosound()
                 else:
                     self.sound.play_digsound()
@@ -593,7 +614,7 @@ class Board():
         imin = io - MATCH_VIEWX if io - MATCH_VIEWX >= 0 else 0
         imax = io + MATCH_VIEWX if io + MATCH_VIEWX < HBLOCK-1 else HBLOCK - 1
         jmin = jo - MATCH_VIEWY if jo - MATCH_VIEWY >= 0 else 0
-        jmax = jo + MATCH_VIEWY if jo + MATCH_VIEWY < VBLOCK-1 else HBLOCK - 1
+        jmax = jo + MATCH_VIEWY if jo + MATCH_VIEWY < VBLOCK-1 else VBLOCK - 1
         # position of the tile of interest in the view
         i, j = i - imin, j - jmin
         io, jo = io - imin, jo - jmin
@@ -626,14 +647,45 @@ class Board():
         k = list_match[rank][0]
         l = list_match[rank][1]
 
-        self.group_dig(i+imin, j+jmin)
-        self.group_dig(k+imin, l+jmin)
+        self.do_digging(i+imin, j+jmin, k+imin, l+jmin)
         return True
 
-    def group_dig(self, i, j):
+    def do_digging(self, i, j, k, l):
+        self.group_dig(i, j, 'digged')
+        self.group_dig(k, l)
+
+
+    def group_dig(self, i, j, tag='not'):
+        xini, yini = (CX + i*DELTAX + self.SCROLLX,
+                      CY + j*DELTAY + self.SCROLLY)
+        # Heavy explosion where the character is not!
+        if tag == 'not':
+            self.spritegroup_other.add(AnimatedTile(self.anim_loaded,
+                                                xini-self.SCROLLX, yini-self.SCROLLY, self))
+            for number in range(3):
+                self.add_destroy_sprite(i, j, self.tiles[j, i])
+
+        # Add a modest explosion close to the character
+        if tag == 'digged':
+            self.spritegroup_other.add(AnimatedTile(self.anim_loaded[:2],
+                                                xini-self.SCROLLX, yini-self.SCROLLY, self))
+        # Remove tile
         index = self.tilesid[j, i]
         self.spritelist[index].dig(self.spritegroup)
         self.tiles[j, i] = -1
+
+
+    def add_destroy_sprite(self, i, j, flavor):
+        img, rect = self.blocks_loaded[flavor]
+        xini, yini = (CX + i*DELTAX + self.SCROLLX,
+                      CY + j*DELTAY + self.SCROLLY)
+        self.explosiontiles.append(ExplosionTile(
+            img, xini-self.SCROLLX, yini-self.SCROLLY))
+        self.spritegroup_other.add(self.explosiontiles[-1])
+
+    def updateexplosiontiles(self):
+        for t in self.explosiontiles:
+            t.moving(self)
 
 
 def main():
@@ -664,7 +716,9 @@ def main():
     clock = pygame.time.Clock()
 
     blocks_loaded = [load_image(i) for i in tilenames]
-    board = Board(blocks_loaded)
+    anim_loaded = [load_image(i, -1) for i in exanames]
+
+    board = Board(blocks_loaded, anim_loaded)
     move = Move()
 
     if DEATHMODE == 1:
@@ -709,6 +763,8 @@ def main():
         # Draw Everything
         screen.blit(background, (0, 0))
         board.spritegroup.draw(screen)
+        board.spritegroup_other.update()
+        board.spritegroup_other.draw(screen)
         pygame.display.flip()
 
     pygame.quit()
