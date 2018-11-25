@@ -50,6 +50,7 @@ class Sound():
         self.combosounds = []
         # self.combosounds.append(load_sound("WOOO.WAV"))
         self.combosounds.append(load_sound("TNT Barrel.wav"))
+        self.out_of_timesound = load_sound("Trekker2.wav")
 
     def play_digsound(self):
         self.digsounds[numpy.random.randint(0, 4)].play()
@@ -66,4 +67,7 @@ class Sound():
 
     def play_combosound(self):
         self.combosounds[numpy.random.randint(0, 1)].play()
+
+    def play_outoftimesound(self):
+        self.out_of_timesound.play()
 
