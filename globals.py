@@ -40,3 +40,8 @@ HITBOXY = 0.7*(DELTAY+1)*0.5
 SPEEDSEQ = numpy.array([0, 4, 5, 6, 6.3, 6.6, 6.9, 7.2, 7.5, 7.8,
                         8.1, 8.4, 8.7, 9., 9.3, 9.6, 9.9])*0.55
 
+COMBOX = 200
+COMBOY = 30
+FACTORDISPLAYCOMBO = 5
+
+COMBOVALIDATED = 40

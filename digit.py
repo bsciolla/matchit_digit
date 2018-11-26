@@ -26,7 +26,7 @@ from globals import DEATHMODE, XSTART, YSTART, SCROLLING_DEATHX
 
 from globals import HSCREEN, VSCREEN, HBLOCK, VBLOCK
 
-from globals import LARGE_TIME, FADE_WAIT, KEYBOARD_WAIT, PROBA_HIT, DELAY_HURT, SCORING_ROW_TIME
+from globals import LARGE_TIME, FADE_WAIT, KEYBOARD_WAIT, PROBA_HIT, DELAY_HURT, SCORING_ROW_TIME, COMBOVALIDATED, FACTORDISPLAYCOMBO
 
 from globals import NKEYS
 
@@ -97,7 +97,7 @@ class MotionHandler():
             self.factor = 1
 
 class Hero():
-    def __init__(self, board):
+    def __init__(self, board, hero_loaded):
 
         if DEATHMODE == 1:
             print(XSTART, YSTART)
@@ -115,7 +115,8 @@ class Hero():
         for i in range(4):
             self.speedseq.append(Speedseq())
 
-        self.sprite = SpriteMan()
+        self.sprite = SpriteHero(hero_loaded)
+        self.skin = 0
         # self.companion1 = SpriteCompanion("undine.png")
         # self.companion2 = SpriteCompanion("lumina.png")
 
@@ -203,6 +204,43 @@ class Hero():
         self.x = self.x + deltax
         self.y = self.y + deltay
 
+    def ChangeSkin(self, skin):
+        self.skin = skin
+        print("level change")
+        self.sprite.ChangeSkin(self.skin)
+
+
+
+
+
+class Leveling():
+    def __init__(self):
+        self.factor = 1
+        self.level = 0
+        self.skin = 0
+
+
+    def GetSkin(self):
+        return (int)(self.level/2)
+
+    def UpdateSkin(self):
+        changeskin = (self.GetSkin() != self.skin)
+        self.skin = self.GetSkin()
+        print(self.level, self.skin)
+        return(changeskin)
+
+    def IncreaseLevel(self):
+        self.level += 1
+        self.factor = 1 + self.level * 0.2
+        return(self.UpdateSkin())
+
+    def DecreaseLevel(self):
+        self.level -= 1
+        if self.level <= 0:
+            self.level = 0
+        self.factor = 1 + self.level * 0.2
+        return(self.UpdateSkin())
+
 
 class Scoring():
     def __init__(self):
@@ -215,37 +253,45 @@ class Scoring():
         self.deathtimer = get_ticks()
         self.factor = 1
         self.timer_hurt =  get_ticks()
+        self.comboscore = 0
+        self.level = Leveling()
 
     def empty_hit(self):
 
-        self.combo_timer = get_ticks()
-        self.in_a_row = 0
-        self.factor = 1
+
 
         if numpy.random.rand() <= PROBA_HIT and get_ticks() - self.timer_hurt > DELAY_HURT :
+            self.comboscore = self.comboscore - 20
+            if self.comboscore < 0:
+                self.comboscore = 0
+
+            self.level.DecreaseLevel()
+            self.level.DecreaseLevel()
+            
+            self.factor -= 0.2
+            if self.factor < 1:
+                self.factor = 1
+
+
             self.health = self.health - 5 - numpy.random.randint(5)
             self.timer_hurt = get_ticks()
             return True
         return False
 
     def out_of_time(self):
-        return(get_ticks() - self.combo_timer > SCORING_ROW_TIME/self.factor)
+        if self.comboscore > 0:
+            self.comboscore = self.comboscore - 0.03*self.factor
+            if self.comboscore <= 0:
+                return True
+        return False
 
     def register_dig(self):
-        next_timer = get_ticks()
-        if self.in_a_row >= 1:
-            if next_timer - self.combo_timer < SCORING_ROW_TIME/self.factor:
-                self.in_a_row += 1
-                self.combo_timer = next_timer
-        else:
-            self.in_a_row = 1
-            self.combo_timer = next_timer
+        self.comboscore = self.comboscore + 10
 
-        if self.in_a_row >= 4:
-            self.in_a_row = 0
-            self.factor += 0.2
+        if self.comboscore > COMBOVALIDATED:
+            self.comboscore = 0
+            self.level.IncreaseLevel()
             self.health = self.health + 3*self.factor
-
             return True
         return False
 
@@ -254,10 +300,13 @@ class Scoring():
             self.deathscroll += 0.01
             self.deathtimer = get_ticks()
 
+    def GetSkin():
+        return(self.level.skin)
+
 
 
 class MenuLife(Scoring):
-    def __init__(self, group):
+    def __init__(self, group, board):
         Scoring.__init__(self)
         self.spritelist = []
         self.group = group
@@ -269,7 +318,11 @@ class MenuLife(Scoring):
             group.add(sprite)
             sprite.place(10*i , 10)
 
-    
+        self.combosprite = ComboSprite(board.images.fire_loaded, group)
+        self.combosprite2 = ComboSprite(board.images.fire_loaded, group, COMBOX)
+        self.combosprite3 = ComboSprite(board.images.fire_loaded, group, COMBOX + COMBOVALIDATED * FACTORDISPLAYCOMBO)
+        self.combosprite2.timer += 100
+        self.combosprite3.timer += 200
 
     def show(self):
         j = (int)(self.health/100*20)
@@ -279,7 +332,8 @@ class MenuLife(Scoring):
             j = 20
         [self.spritelist[i].remove(self.group) for i in range(j,20)]
         [self.spritelist[i].add(self.group) for i in range(0,j)]
-            
+
+        self.combosprite.score = self.comboscore
 
 
 class Move():
@@ -352,12 +406,12 @@ class Board():
         
 
         self.hour = get_ticks()
-        self.hero = Hero(self)
+        self.hero = Hero(self, images.hero_loaded)
         self.sound = sound.Sound()
         self.spritegroup = pygame.sprite.Group()
         self.spritegroup_other = pygame.sprite.Group()
 
-        self.scoring = MenuLife(self.spritegroup_other)
+        self.scoring = MenuLife(self.spritegroup_other, self)
         self.spritegroup_other.add(self.hero.sprite)
         # self.spritegroup_other.add(self.hero.companion1)
         # self.spritegroup_other.add(self.hero.companion2)
@@ -586,10 +640,16 @@ class Board():
         self.scoring.show()
         for t in self.explosiontiles:
             t.moving(self)
-        if self.scoring.out_of_time() and self.scoring.in_a_row >= 1:
+        if self.scoring.out_of_time():
             self.sound.play_outoftimesound()
-            self.scoring.in_a_row = 0
 
+        nextskin = self.scoring.level.skin
+        if nextskin != self.hero.skin:
+            self.hero.ChangeSkin(nextskin)
+            self.sound.play_youpiesound()
+
+
+    
 
 def main():
     """this function is called when the program starts.

@@ -3,6 +3,10 @@ import os
 import pygame
 from pygame.locals import *
 from pygame.compat import geterror
+
+from globals import DELTAX, DELTAY
+
+
 main_dir = os.path.split(os.path.abspath(__file__))[0]
 data_dir = os.path.join(main_dir, 'data')
 
@@ -29,9 +33,18 @@ class Imageloader():
             ['blocks/rock'+str(i)+'.png' for i in range(1, 19)]
         exanames = ['exa'+str(i)+'.png' for i in range(1, 10)]
         firenames = ['fire'+str(i)+'.png' for i in range(1, 5)]
-
+        heronames = ['hero'+str(i)+'.png' for i in range(1, 8)]
 
         self.blocks_loaded = [load_image(i) for i in tilenames]
         self.anim_loaded = [load_image(i, -1) for i in exanames]
         self.fire_loaded = [load_image(i, -1) for i in firenames]
+        self.hero_loaded = [load_image(i, -1) for i in heronames]
+        for i in range(len(self.hero_loaded)):
+            image, rect = self.hero_loaded[i][0], self.hero_loaded[i][1]
+            image = pygame.transform.scale(
+                image, ((int)(0.7*(DELTAX+1)), (int)(0.7*(DELTAY+1))))
+            rect = image.get_rect()
+            self.hero_loaded[i] = (image, rect)
+
+
 
