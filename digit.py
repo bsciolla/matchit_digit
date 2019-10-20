@@ -97,11 +97,9 @@ class MotionHandler():
             self.factor = 1
 
 class Hero():
-    def __init__(self, board, hero_loaded):
+    def __init__(self, board, hero_loaded, lumina_loaded):
 
         if DEATHMODE == 1:
-            print(XSTART, YSTART)
-            print(board.SCROLLX,  board.SCROLLY)
             self.x = CX + XSTART*DELTAX + board.SCROLLX
             self.y = CY + YSTART*DELTAY + board.SCROLLY
         else:
@@ -117,7 +115,8 @@ class Hero():
 
         self.sprite = SpriteHero(hero_loaded)
         self.skin = 0
-        # self.companion1 = SpriteCompanion("undine.png")
+        self.SpeedMode = 0
+        self.companion1 = SpriteCompanion(lumina_loaded[0])
         # self.companion2 = SpriteCompanion("lumina.png")
 
     def updatecompanions(self, board):
@@ -125,9 +124,9 @@ class Hero():
         self.companion1.rect.center = \
             (self.x + board.SCROLLX + MATCH_VIEWX*DELTAX*math.cos(get_ticks()*angular_speed),
              self.y + board.SCROLLY + MATCH_VIEWY*DELTAY*math.sin(get_ticks()*angular_speed))
-        self.companion2.rect.center = \
-            (self.x + board.SCROLLX + MATCH_VIEWX*DELTAX*math.cos(get_ticks()*angular_speed + math.pi),
-             self.y + board.SCROLLY + MATCH_VIEWY*DELTAY*math.sin(get_ticks()*angular_speed + math.pi))
+       # self.companion2.rect.center = \
+        #    (self.x + board.SCROLLX + MATCH_VIEWX*DELTAX*math.cos(get_ticks()*angular_speed + math.pi),
+         #    self.y + board.SCROLLY + MATCH_VIEWY*DELTAY*math.sin(get_ticks()*angular_speed + math.pi))
 
     def updateposition(self, board):
 
@@ -153,14 +152,25 @@ class Hero():
     def updateposition_nockeck(self, board):
         self.sprite.rect.center = \
             (self.x + board.SCROLLX, self.y + board.SCROLLY)
-        # self.updatecompanions(board)
+        self.updatecompanions(board)
 
 
     def get_speed(self, dx, dy):
-        return(self.speedseq[2].speed*self.motionHandler.factor -
-               self.speedseq[3].speed*self.motionHandler.factor,
-               self.speedseq[1].speed*self.motionHandler.factor -
-               self.speedseq[0].speed*self.motionHandler.factor)
+        if self.SpeedMode == 0:
+            return(self.speedseq[2].speed*self.motionHandler.factor -
+                   self.speedseq[3].speed*self.motionHandler.factor,
+                   self.speedseq[1].speed*self.motionHandler.factor -
+                   self.speedseq[0].speed*self.motionHandler.factor)
+        if dy == -1:
+            return(0, -DELTAX)
+        if dy == 1:
+            return(0, DELTAX)
+        if dx == -1:
+            return(-DELTAY, 0)
+        if dx == 1:
+            return(DELTAY, 0)
+        return(0, 0)
+
 
     def accelerate(self, dx, dy):
         if self.motionHandler.factor<1:
@@ -226,7 +236,6 @@ class Leveling():
     def UpdateSkin(self):
         changeskin = (self.GetSkin() != self.skin)
         self.skin = self.GetSkin()
-        print(self.level, self.skin)
         return(changeskin)
 
     def IncreaseLevel(self):
@@ -251,10 +260,11 @@ class Scoring():
         self.in_a_row = 0
         self.deathscroll = 0.1
         self.deathtimer = get_ticks()
-        self.factor = 1
+        #self.factor = 1
         self.timer_hurt =  get_ticks()
         self.comboscore = 0
         self.level = Leveling()
+        self.hittimes = []
 
     def empty_hit(self):
 
@@ -265,33 +275,48 @@ class Scoring():
             if self.comboscore < 0:
                 self.comboscore = 0
 
-            self.level.DecreaseLevel()
-            self.level.DecreaseLevel()
-            
-            self.factor -= 0.2
-            if self.factor < 1:
-                self.factor = 1
-
-
-            self.health = self.health - 5 - numpy.random.randint(5)
+            #self.level.DecreaseLevel()
+            self.health = self.health - numpy.random.randint(30) - numpy.random.randint(30) - numpy.random.randint(30)
+            if self.health < 0:
+                self.dying()
             self.timer_hurt = get_ticks()
             return True
         return False
 
+    def dying(self):
+        self.level.DecreaseLevel()
+        self.health = 100
+
     def out_of_time(self):
         if self.comboscore > 0:
-            self.comboscore = self.comboscore - 0.03*self.factor
+            self.comboscore = self.comboscore - 0.03*self.level.factor
             if self.comboscore <= 0:
                 return True
         return False
 
-    def register_dig(self):
-        self.comboscore = self.comboscore + 10
+    def combo_straight(self, move):
+        self.hittimes.append(get_ticks())
+        if len(self.hittimes) < 5:
+            return False
 
+        self.hittimes = self.hittimes[-5:]
+        if move.GetOldestKeyPressTime() - 20 < self.hittimes[-5]:
+            self.health = self.health + 3*self.level.factor
+            self.level.IncreaseLevel()
+            # Two more to get next combo
+            move.ResetKeyPressTime(self.hittimes[-3])
+            return True
+        return False
+
+
+
+
+    def combo_quick(self):
+        self.comboscore = self.comboscore + 10
         if self.comboscore > COMBOVALIDATED:
             self.comboscore = 0
             self.level.IncreaseLevel()
-            self.health = self.health + 3*self.factor
+            self.health = self.health + 3*self.level.factor
             return True
         return False
 
@@ -340,13 +365,16 @@ class Move():
     # UP, DOWN, RIGHT, LEFT: 273, 274, 275, 276
     def __init__(self):
         self.push = numpy.array([0, 0, 0, 0])
-        self.when = numpy.array([1, 1, 1, 1])*LARGE_TIME
+        self.when = numpy.array([1, 1, 1, 1])*(-1)
+        self.whenpressed = numpy.array([1, 1, 1, 1])*(-1)
 
     def key_up(self, key, hero):
         if not(self.is_a_move(key)):
             return
         self.push[key-273] = 0
-        self.when[key-273] = LARGE_TIME
+        self.when[key-273] = -1
+        self.whenpressed[key-273] = -1
+
         if key == K_UP or key == K_DOWN:
             hero.stopping(0, 1)
         if key == K_LEFT or key == K_RIGHT:
@@ -357,6 +385,7 @@ class Move():
             return
         self.push[key-273] = 1
         self.when[key-273] = get_ticks()
+        self.whenpressed[key-273] = get_ticks()
         if key == K_UP:
             hero.vy = -5
         if key == K_DOWN:
@@ -366,19 +395,26 @@ class Move():
         if key == K_RIGHT:
             hero.vx = 5
 
-    def launch_mem(self, board):
+    def keyPressed(self, board):
         if numpy.all(self.push == 0):
             return
-        key = numpy.argmin(self.when) + 273
+        maxim = self.when.copy()
+        maxim[maxim<0] = numpy.max(self.when.copy()) + 1
+        key = numpy.argmin(maxim) + 273
 
         if (get_ticks() - self.when[key-273]) > KEYBOARD_WAIT:
-            board.move(key)
+            board.moveHero(key)
             self.when[key-273] = get_ticks()
 
     def is_a_move(self, key):
         return(key == K_LEFT or key == K_RIGHT or
                key == K_UP or key == K_DOWN)
 
+    def GetOldestKeyPressTime(self):
+        return(max(self.whenpressed))
+
+    def ResetKeyPressTime(self, timereset):
+        self.whenpressed[self.push==1] = timereset
 
 class Board():
     def __init__(self, images, nkeys=NKEYS):
@@ -406,20 +442,22 @@ class Board():
         
 
         self.hour = get_ticks()
-        self.hero = Hero(self, images.hero_loaded)
+        self.hero = Hero(self, images.hero_loaded, images.lumina_loaded)
         self.sound = sound.Sound()
         self.spritegroup = pygame.sprite.Group()
         self.spritegroup_other = pygame.sprite.Group()
 
         self.scoring = MenuLife(self.spritegroup_other, self)
         self.spritegroup_other.add(self.hero.sprite)
-        # self.spritegroup_other.add(self.hero.companion1)
+        self.spritegroup_other.add(self.hero.companion1)
         # self.spritegroup_other.add(self.hero.companion2)
         self.explosiontiles = []
 
         self.build_blocks_sprites()
         self.place_tiles()
         self.hero.updateposition(self)
+
+        self.move = Move()
 
     def build_blocks_sprites(self):
         self.spritelist = []
@@ -462,7 +500,10 @@ class Board():
         self.scrolling(DELTAX, 0)
         self.hero.x = self.hero.x - DELTAX
 
-    def move(self, key):
+    def LaunchBall(self, key):
+        self.hero.SpeedMode = 1
+
+    def moveHero(self, key):
         dx = 0
         dy = 0
         i, j = coord_to_tiles(self.hero.x, self.hero.y)
@@ -484,10 +525,11 @@ class Board():
         #    if (j >= VBLOCK-1):
         #       return
 
+
         dist_x = (self.hero.x - (CX + i*DELTAX))
         dist_y = (self.hero.y - (CY + j*DELTAY))
+        
         speed_x, speed_y = self.hero.get_speed(dx, dy)
-
         collision = False
 
         if dx == 1 and dist_x + HITBOXX + speed_x >= 0.5*DELTAX:
@@ -534,9 +576,16 @@ class Board():
             if self.find_match_to_one_tile(k, l, i, j):
                 self.hero.moving_digging(dx, dy)
                 self.hero.updateposition(self)
-                if self.scoring.register_dig():
+                cond1 = self.scoring.combo_quick()
+                cond2 = self.scoring.combo_straight(self.move)
+
+                if cond1 is True:
                     self.sound.play_combosound()
-                else:
+
+                if cond2 is True:
+                    self.sound.play_combostraightsound()
+
+                if not(cond1) and not(cond2):
                     self.sound.play_digsound()
                     self.sound.play_hitsound()
 
@@ -547,6 +596,11 @@ class Board():
                     self.sound.play_hurtsound()
                 else:
                     self.sound.play_hitsound()
+        if self.hero.SpeedMode == 1:
+            self.hero.SpeedMode = 0
+            self.hero.stopping(1, 1)
+
+
 
     def place_tiles(self):
 
@@ -641,13 +695,45 @@ class Board():
         for t in self.explosiontiles:
             t.moving(self)
         if self.scoring.out_of_time():
-            self.sound.play_outoftimesound()
+            if TAG_NO_PRESSURE == 0:
+                self.sound.play_outoftimesound()
 
         nextskin = self.scoring.level.skin
-        if nextskin != self.hero.skin:
+        if nextskin > self.hero.skin:
             self.hero.ChangeSkin(nextskin)
             self.sound.play_youpiesound()
+        if nextskin < self.hero.skin:
+            self.hero.ChangeSkin(nextskin)
+            self.sound.play_loselifesound()
 
+
+def IsFire(key):
+    return key == K_q or key == K_s or key == K_d or key == K_z
+
+
+def GetKeyboardEvents(move, board):
+    # Handle Input Events
+    for event in pygame.event.get():
+
+        if event.type == KEYDOWN:
+            move.key_down(event.key, board.hero)
+
+        if event.type == KEYUP:
+            move.key_up(event.key, board.hero)
+
+        if event.type == QUIT:
+            return True
+
+        if event.type == KEYDOWN and event.key == K_ESCAPE:
+            return True
+
+        if event.type == KEYDOWN and move.is_a_move(event.key):
+            board.moveHero(event.key)
+
+        if event.type == KEYDOWN and IsFire(event.key):
+            board.LaunchBall(event.key)
+
+    return False
 
     
 
@@ -666,7 +752,6 @@ def main():
     background = background.convert()
     background.fill((50, 20, 10))
 
-
 # Create font
     if pygame.font:
         font = pygame.font.Font(None, fontsize)
@@ -681,39 +766,22 @@ def main():
     images = imageloader.Imageloader()
 
     board = Board(images)
-    move = Move()
+    move = board.move
 
     if DEATHMODE == 1:
         board.scrolling(500, 0)
     board.playing = True
 
 # Main Loop
-    going = True
-    sound_loop = 0
-    current_key = -1
+    exitTag = False
 
-    while going:
+    while exitTag == False:
         clock.tick(30)
+        
 
-        move.launch_mem(board)
+        move.keyPressed(board)
 
-        # Handle Input Events
-        for event in pygame.event.get():
-
-            if event.type == KEYDOWN:
-                move.key_down(event.key, board.hero)
-
-            if event.type == KEYUP:
-                move.key_up(event.key, board.hero)
-
-            if event.type == QUIT:
-                going = False
-
-            elif event.type == KEYDOWN and event.key == K_ESCAPE:
-                going = False
-
-            elif event.type == KEYDOWN and move.is_a_move(event.key):
-                board.move(event.key)
+        exitTag = GetKeyboardEvents(move, board)
 
         board.scrolling(0, 0)
 

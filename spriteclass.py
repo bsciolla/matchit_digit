@@ -3,6 +3,8 @@ import pygame, numpy
 import imageloader
 from globals import DELTAX, DELTAY, LIFESPAN, ANIMRATE
 from globals import COMBOX, COMBOY, FACTORDISPLAYCOMBO
+
+from globals import TAG_NO_PRESSURE
 import copy
 
 
@@ -14,27 +16,43 @@ class SpriteHero(pygame.sprite.Sprite):
         pygame.sprite.Sprite.__init__(self)
         self.imagelist = imagelist
         self.image, self.rect = self.imagelist[0]
-        self.image, self.rect = self.imagelist[0]
+        self.ReloadWithSize(0,1)
         self.skin = 0
+        self.size = 0.9
+        self.imgnum = 0
 
     def ChangeSkin(self, skin):
         self.skin = skin
-        if skin >= 8:
-            self.image = pygame.transform.scale(
-                self.image, ((int)(0.7*(1+0.1*self.skin)*(DELTAX+1)), (int)(0.7*(1+0.1*self.skin)*(DELTAY+1))))
-            self.rect = self.image.get_rect()
-        else:
-            self.image = self.imagelist[skin][0]
-            self.rect = self.imagelist[skin][1]
+        self.IncreaseSkin()
+        self.ReloadWithSize(self.imgnum, self.size)
 
+
+    def ReloadWithSize(self, skin, factor):
+        image = self.imagelist[skin][0].copy()
+        height = image.get_height()
+        width = image.get_width()
+        resizing = factor*DELTAY/height if (height/width > DELTAY/DELTAX) else factor*DELTAX/width
+        self.image = pygame.transform.scale(
+                image, ((int)(resizing*width), (int)(resizing*height)) )
+        self.rect = self.image.get_rect()
+
+    def IncreaseSkin(self):
+        self.size = 0.9 + (self.skin%3)*0.2
+        self.imgnum = self.skin//3
+        if self.imgnum > 6:
+            self.imgnum = 6
+            if self.skin > 7*3:
+                self.size = 1.5
+        
 
 class SpriteCompanion(pygame.sprite.Sprite):
-    def __init__(self, name):
+    def __init__(self, image):
         pygame.sprite.Sprite.__init__(self)
-        self.image, self.rect = imageloader.load_image(name, -1)
+        self.image, self.rect = image
+        
         self.image = pygame.transform.scale(
             self.image, ((int)(0.5*(DELTAX+1)), (int)(0.5*(DELTAY+1))))
-        self.rect = self.image.get_rect()
+  #     self.rect = self.image.get_rect()
 
 
 class SpriteTile(pygame.sprite.Sprite):
@@ -67,6 +85,14 @@ class SpriteTool(pygame.sprite.DirtySprite):
     def place(self, x, y):
         self.rect.center = x, y
 
+class BallSprite(pygame.sprite.Sprite):
+    def __init__(self, name):
+        pygame.sprite.Sprite.__init__(self)
+        self.image, self.rect = imageloader.load_image("BallSprite.png", -1)
+        self.image = pygame.transform.scale(
+            self.image, ((int)(0.5*(DELTAX+1)), (int)(0.5*(DELTAY+1))))
+        self.rect = self.image.get_rect()
+        
 
 
 class ExplosionTile(pygame.sprite.Sprite):
@@ -160,7 +186,8 @@ class ComboSprite(pygame.sprite.Sprite):
         self.score = 10
         self.timer = get_ticks() + ANIMRATE
         self.placeTile()
-        self.add(group)
+        if TAG_NO_PRESSURE == 0:
+            self.add(group)
 
     def update(self):
         self.placeTile()

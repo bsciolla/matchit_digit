@@ -34,17 +34,13 @@ class Imageloader():
         exanames = ['exa'+str(i)+'.png' for i in range(1, 10)]
         firenames = ['fire'+str(i)+'.png' for i in range(1, 5)]
         heronames = ['hero'+str(i)+'.png' for i in range(1, 8)]
+        lumina = ['lumina.png']
 
         self.blocks_loaded = [load_image(i) for i in tilenames]
         self.anim_loaded = [load_image(i, -1) for i in exanames]
         self.fire_loaded = [load_image(i, -1) for i in firenames]
         self.hero_loaded = [load_image(i, -1) for i in heronames]
-        for i in range(len(self.hero_loaded)):
-            image, rect = self.hero_loaded[i][0], self.hero_loaded[i][1]
-            image = pygame.transform.scale(
-                image, ((int)(0.7*(DELTAX+1)), (int)(0.7*(DELTAY+1))))
-            rect = image.get_rect()
-            self.hero_loaded[i] = (image, rect)
+        self.lumina_loaded = [load_image('lumina.png', -1)]
 
 
 
