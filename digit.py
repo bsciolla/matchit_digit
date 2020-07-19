@@ -96,6 +96,31 @@ class MotionHandler():
         if get_ticks() - self.timer > SLOWED_TIME:
             self.factor = 1
 
+class Companion():
+    def __init__(self, sprite):
+        self.sprite = sprite
+        self.x = -100
+        self.y = -100
+        self.startVisible = 0
+
+    def SetPosition(self, board, isAbove, x, y):
+        angular_speed = 3.14/200.
+        if isAbove:
+            if self.startVisible == 0:
+                self.startVisible = get_ticks()
+            if get_ticks() - self.startVisible < 1500:
+                radiusFactor = 1.0 - (get_ticks() - self.startVisible)/1500.0
+                self.sprite.rect.center = \
+                (x + board.SCROLLX + radiusFactor * 10 * math.cos(get_ticks() * angular_speed),
+                 y + board.SCROLLY + radiusFactor * 4 * math.sin(get_ticks() * angular_speed))
+            else:
+                self.sprite.rect.center = (x + board.SCROLLX, \
+                    y + board.SCROLLY)
+
+        else:
+            self.sprite.rect.center = (-100, -100)
+            self.startVisible = 0
+
 class Hero():
     def __init__(self, board, hero_loaded, lumina_loaded):
 
@@ -116,14 +141,17 @@ class Hero():
         self.sprite = SpriteHero(hero_loaded)
         self.skin = 0
         self.SpeedMode = 0
-        self.companion1 = SpriteCompanion(lumina_loaded[0])
+        sprite = SpriteCompanion(lumina_loaded[0])
+        self.companion1 = Companion(sprite)
+
         # self.companion2 = SpriteCompanion("lumina.png")
 
+
+
     def updatecompanions(self, board):
-        angular_speed = 3.14/5000.
-        self.companion1.rect.center = \
-            (self.x + board.SCROLLX + MATCH_VIEWX*DELTAX*math.cos(get_ticks()*angular_speed),
-             self.y + board.SCROLLY + MATCH_VIEWY*DELTAY*math.sin(get_ticks()*angular_speed))
+        self.companion1.SetPosition(board, board.scoring.IsAbove(0.5), self.x, self.y)
+
+
        # self.companion2.rect.center = \
         #    (self.x + board.SCROLLX + MATCH_VIEWX*DELTAX*math.cos(get_ticks()*angular_speed + math.pi),
          #    self.y + board.SCROLLY + MATCH_VIEWY*DELTAY*math.sin(get_ticks()*angular_speed + math.pi))
@@ -161,6 +189,11 @@ class Hero():
                    self.speedseq[3].speed*self.motionHandler.factor,
                    self.speedseq[1].speed*self.motionHandler.factor -
                    self.speedseq[0].speed*self.motionHandler.factor)
+        if self.SpeedMode == 2:
+            return(self.speedseq[2].speed*self.motionHandler.factor * 2 -
+                   self.speedseq[3].speed*self.motionHandler.factor * 2,
+                   self.speedseq[1].speed*self.motionHandler.factor * 2 -
+                   self.speedseq[0].speed*self.motionHandler.factor * 2)
         if dy == -1:
             return(0, -DELTAX)
         if dy == 1:
@@ -216,8 +249,8 @@ class Hero():
 
     def ChangeSkin(self, skin):
         self.skin = skin
-        print("level change")
         self.sprite.ChangeSkin(self.skin)
+        
 
 
 
@@ -241,6 +274,7 @@ class Leveling():
     def IncreaseLevel(self):
         self.level += 1
         self.factor = 1 + self.level * 0.2
+        print("Leveling to ", self.level)
         return(self.UpdateSkin())
 
     def DecreaseLevel(self):
@@ -248,6 +282,7 @@ class Leveling():
         if self.level <= 0:
             self.level = 0
         self.factor = 1 + self.level * 0.2
+        print("Down a level ", self.level)
         return(self.UpdateSkin())
 
 
@@ -267,9 +302,6 @@ class Scoring():
         self.hittimes = []
 
     def empty_hit(self):
-
-
-
         if numpy.random.rand() <= PROBA_HIT and get_ticks() - self.timer_hurt > DELAY_HURT :
             self.comboscore = self.comboscore - 20
             if self.comboscore < 0:
@@ -282,6 +314,9 @@ class Scoring():
             self.timer_hurt = get_ticks()
             return True
         return False
+
+    def IsAbove(self, proportion):
+        return self.comboscore >= COMBOVALIDATED * proportion
 
     def dying(self):
         self.level.DecreaseLevel()
@@ -449,7 +484,7 @@ class Board():
 
         self.scoring = MenuLife(self.spritegroup_other, self)
         self.spritegroup_other.add(self.hero.sprite)
-        self.spritegroup_other.add(self.hero.companion1)
+        self.spritegroup_other.add(self.hero.companion1.sprite)
         # self.spritegroup_other.add(self.hero.companion2)
         self.explosiontiles = []
 
@@ -473,6 +508,21 @@ class Board():
 
                     self.spritelist[-1].add(self.spritegroup)
         self.tilesid = self.tilesid.astype(int)
+
+    def haveOnlyVisibleSpritesOnScreen(self):
+        return
+        i, j = coord_to_tiles(self.hero.x, self.hero.y)
+        for sprite in self.spritelist:
+            k, l = coord_to_tiles(sprite.rect.x, sprite.rect.y)
+            dist_x = (i - k)
+            dist_y = (j - l)
+            if math.fabs(dist_x) < 10 or \
+                math.fabs(dist_y) < 10 and self.tiles[i, j] != -1:
+                sprite.add(self.spritegroup)
+            else:
+                sprite.remove(self.spritegroup)
+
+
 
     def scrolling(self, dx, dy):
         self.SCROLLX += dx
@@ -500,8 +550,10 @@ class Board():
         self.scrolling(DELTAX, 0)
         self.hero.x = self.hero.x - DELTAX
 
-    def LaunchBall(self, key):
+    def Dash(self):
         self.hero.SpeedMode = 1
+    def Fast(self):
+        self.hero.SpeedMode = 2
 
     def moveHero(self, key):
         dx = 0
@@ -599,6 +651,8 @@ class Board():
         if self.hero.SpeedMode == 1:
             self.hero.SpeedMode = 0
             self.hero.stopping(1, 1)
+
+
 
 
 
@@ -708,8 +762,9 @@ class Board():
 
 
 def IsFire(key):
-    return key == K_q or key == K_s or key == K_d or key == K_z
-
+    return key == K_f
+def IsFast(key):
+    return key == K_d
 
 def GetKeyboardEvents(move, board):
     # Handle Input Events
@@ -731,7 +786,11 @@ def GetKeyboardEvents(move, board):
             board.moveHero(event.key)
 
         if event.type == KEYDOWN and IsFire(event.key):
-            board.LaunchBall(event.key)
+            board.Dash()
+        if event.type == KEYDOWN and IsFast(event.key):
+            board.Fast()
+        if event.type == KEYUP and IsFast(event.key):
+            board.hero.SpeedMode = 0
 
     return False
 
@@ -792,6 +851,7 @@ def main():
 
         # Draw Everything
         board.updateBoard()
+        board.haveOnlyVisibleSpritesOnScreen()
         screen.blit(background, (0, 0))
         board.spritegroup.draw(screen)
         board.spritegroup_other.update()
