@@ -77,6 +77,8 @@ def coord_to_tiles(x, y):
     j = (int)((float)(y-cy)/(float)(DELTAY))
     return i, j
 
+def tiles_to_coord(i, j):
+    return CX + i*DELTAX, CY + j*DELTAY
 
 CX = HSCREEN/2.0 - HBLOCK/2.0 * DELTAX
 CY = VSCREEN/2.0 - VBLOCK/2.0 * DELTAY
@@ -125,12 +127,16 @@ class Hero():
     def __init__(self, board, hero_loaded, lumina_loaded):
 
         if DEATHMODE == 1:
-            self.x = CX + XSTART*DELTAX + board.SCROLLX
+            self.x = CX + 0.4 + XSTART*DELTAX + board.SCROLLX
             self.y = CY + YSTART*DELTAY + board.SCROLLY
         else:
-            self.x = CX + 10*HBLOCK
+            self.x = CX + HBLOCK/2 + 1 + 10 * HBLOCK
             self.y = CY
+        
 
+        self.targetX = self.x
+        self.targetY = self.y
+        
         self.vx = 0
         self.vy = 0
         self.speedseq = []
@@ -140,13 +146,15 @@ class Hero():
 
         self.sprite = SpriteHero(hero_loaded)
         self.skin = 0
-        self.SpeedMode = 0
+        self.SpeedMode = 4
         sprite = SpriteCompanion(lumina_loaded[0])
         self.companion1 = Companion(sprite)
 
         # self.companion2 = SpriteCompanion("lumina.png")
 
-
+    def MoveTarget(self, deltax, deltay):
+        self.targetX = self.targetX + DELTAX * deltax
+        self.targetY = self.targetY + DELTAY * deltay
 
     def updatecompanions(self, board):
         self.companion1.SetPosition(board, board.scoring.IsAbove(0.5), self.x, self.y)
@@ -182,8 +190,21 @@ class Hero():
             (self.x + board.SCROLLX, self.y + board.SCROLLY)
         self.updatecompanions(board)
 
+    def TargetReached(self):
+        return (self.x == self.targetX) and (self.y == self.targetY)
 
     def get_speed(self, dx, dy):
+        
+        if self.SpeedMode == 4:
+            jumpFactor = 0.35
+            if abs(self.targetX - self.x) + abs(self.targetY - self.y) < 10:
+                jumpFactor = 1
+                self.previousx = self.targetX
+                self.previousy = self.targetY
+            
+            return (jumpFactor * (self.targetX - self.x),
+                    jumpFactor * (self.targetY - self.y))
+        
         if self.SpeedMode == 0:
             return(self.speedseq[2].speed*self.motionHandler.factor -
                    self.speedseq[3].speed*self.motionHandler.factor,
@@ -219,6 +240,8 @@ class Hero():
         return
 
     def stopping(self, dx, dy):
+        self.targetX = self.x
+        self.targetY = self.y
         if dx != 0:
             self.speedseq[2].reset_speed()
             self.speedseq[3].reset_speed()
@@ -226,8 +249,15 @@ class Hero():
             self.speedseq[0].reset_speed()
             self.speedseq[1].reset_speed()
 
+    def recover_position(self, i, j):
+        x, y = tiles_to_coord(i, j)
+        self.x = self.previousx
+        self.y = self.previousy
+        self.targetX = self.previousx
+        self.targetY = self.previousy
+
     def moving(self, dx, dy):
-        self.accelerate(dx, dy)
+        #self.accelerate(dx, dy)
         deltax, deltay = self.get_speed(dx, dy)
         self.x = self.x + deltax
         self.y = self.y + deltay
@@ -251,10 +281,6 @@ class Hero():
         self.skin = skin
         self.sprite.ChangeSkin(self.skin)
         
-
-
-
-
 
 class Leveling():
     def __init__(self):
@@ -409,11 +435,12 @@ class Move():
         self.push[key-273] = 0
         self.when[key-273] = -1
         self.whenpressed[key-273] = -1
+        print("up " ,key)
 
-        if key == K_UP or key == K_DOWN:
-            hero.stopping(0, 1)
-        if key == K_LEFT or key == K_RIGHT:
-            hero.stopping(1, 0)
+        #if key == K_UP or key == K_DOWN:
+        #    hero.stopping(0, 1)
+        #if key == K_LEFT or key == K_RIGHT:
+        #    hero.stopping(1, 0)
 
     def key_down(self, key, hero):
         if not(self.is_a_move(key)):
@@ -421,23 +448,32 @@ class Move():
         self.push[key-273] = 1
         self.when[key-273] = get_ticks()
         self.whenpressed[key-273] = get_ticks()
+    
         if key == K_UP:
             hero.vy = -5
+            hero.MoveTarget(0, -1)
         if key == K_DOWN:
             hero.vy = 5
+            hero.MoveTarget(0, 1)
         if key == K_LEFT:
             hero.vx = -5
+            hero.MoveTarget(-1, 0)
         if key == K_RIGHT:
             hero.vx = 5
+            hero.MoveTarget(1, 0)
 
-    def keyPressed(self, board):
-        if numpy.all(self.push == 0):
-            return
+    def MoveRoutine(self, board):
+        if (get_ticks() - numpy.max(self.when)) > KEYBOARD_WAIT \
+           and (not numpy.all(self.push == 0)) and board.hero.TargetReached():
+            keypress = numpy.argmax(self.when)
+            if self.push[keypress] == 1:
+                self.key_down(keypress + 273, board.hero) 
+
         maxim = self.when.copy()
         maxim[maxim<0] = numpy.max(self.when.copy()) + 1
-        key = numpy.argmin(maxim) + 273
-
-        if (get_ticks() - self.when[key-273]) > KEYBOARD_WAIT:
+        key = numpy.argmin(maxim) + 273           
+        
+        if (get_ticks() - self.when[key-273]) > KEYBOARD_WAIT:                
             board.moveHero(key)
             self.when[key-273] = get_ticks()
 
@@ -551,9 +587,11 @@ class Board():
         self.hero.x = self.hero.x - DELTAX
 
     def Dash(self):
-        self.hero.SpeedMode = 1
+        boo = 0
+        #self.hero.SpeedMode = 1
     def Fast(self):
-        self.hero.SpeedMode = 2
+        boo = 0
+        #self.hero.SpeedMode = 2
 
     def moveHero(self, key):
         dx = 0
@@ -577,9 +615,9 @@ class Board():
         #    if (j >= VBLOCK-1):
         #       return
 
-
-        dist_x = (self.hero.x - (CX + i*DELTAX))
-        dist_y = (self.hero.y - (CY + j*DELTAY))
+        dist_x, dist_y = tiles_to_coord(i, j)
+        dist_x = self.hero.x - dist_x
+        dist_y = self.hero.y - dist_y
         
         speed_x, speed_y = self.hero.get_speed(dx, dy)
         collision = False
@@ -642,18 +680,16 @@ class Board():
                     self.sound.play_hitsound()
 
             else:
-                self.hero.stopping(dx, dy)
+                self.hero.recover_position(i, j)
 
                 if self.scoring.empty_hit():
                     self.sound.play_hurtsound()
                 else:
                     self.sound.play_hitsound()
+        
         if self.hero.SpeedMode == 1:
             self.hero.SpeedMode = 0
             self.hero.stopping(1, 1)
-
-
-
 
 
     def place_tiles(self):
@@ -837,10 +873,8 @@ def main():
     while exitTag == False:
         clock.tick(30)
         
-
-        move.keyPressed(board)
-
         exitTag = GetKeyboardEvents(move, board)
+        move.MoveRoutine(board)
 
         board.scrolling(0, 0)
 
