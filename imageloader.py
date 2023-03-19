@@ -2,7 +2,6 @@
 import os
 import pygame
 from pygame.locals import *
-from pygame.compat import geterror
 
 from globals import DELTAX, DELTAY
 
@@ -16,7 +15,6 @@ def load_image(name, colorkey=None):
         image = pygame.image.load(fullname)
     except pygame.error:
         print('Cannot load image:', fullname)
-        raise SystemExit(str(geterror()))
     image = image.convert()
     if colorkey is not None:
         if colorkey is -1:

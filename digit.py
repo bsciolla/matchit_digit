@@ -11,7 +11,6 @@ import sys
 import numpy
 import math
 from pygame.locals import *
-from pygame.compat import geterror
 import match_func
 import sound
 import imageloader
@@ -136,6 +135,7 @@ class Hero():
 
         self.targetX = self.x
         self.targetY = self.y
+        self.isOnTarget = True
         
         self.vx = 0
         self.vy = 0
@@ -153,8 +153,10 @@ class Hero():
         # self.companion2 = SpriteCompanion("lumina.png")
 
     def MoveTarget(self, deltax, deltay):
-        self.targetX = self.targetX + DELTAX * deltax
-        self.targetY = self.targetY + DELTAY * deltay
+        if self.isOnTarget:
+            self.targetX = self.targetX + DELTAX * deltax
+            self.targetY = self.targetY + DELTAY * deltay
+            self.isOnTarget = False
 
     def updatecompanions(self, board):
         self.companion1.SetPosition(board, board.scoring.IsAbove(0.5), self.x, self.y)
@@ -196,11 +198,12 @@ class Hero():
     def get_speed(self, dx, dy):
         
         if self.SpeedMode == 4:
-            jumpFactor = 0.35
+            jumpFactor = 0.2
             if abs(self.targetX - self.x) + abs(self.targetY - self.y) < 10:
                 jumpFactor = 1
                 self.previousx = self.targetX
                 self.previousy = self.targetY
+                self.isOnTarget = True
             
             return (jumpFactor * (self.targetX - self.x),
                     jumpFactor * (self.targetY - self.y))
@@ -464,7 +467,7 @@ class Move():
 
     def MoveRoutine(self, board):
         if (get_ticks() - numpy.max(self.when)) > KEYBOARD_WAIT \
-           and (not numpy.all(self.push == 0)) and board.hero.TargetReached():
+           and (not numpy.all(self.push == 0)):
             keypress = numpy.argmax(self.when)
             if self.push[keypress] == 1:
                 self.key_down(keypress + 273, board.hero) 
